@@ -1,5 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
+const API_URL = "https://loom-narrative-engine.onrender.com";
+
 type Character = {
   id: string;
   name: string;
@@ -124,7 +126,7 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
-      const response = await fetch("/api/sample");
+      const response = await fetch("https://loom-narrative-engine.onrender.com/api/sample");
       if (!response.ok) throw new Error(await readError(response));
       applyStory(await response.json());
     } catch (err) {
