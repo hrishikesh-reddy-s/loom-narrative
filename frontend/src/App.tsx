@@ -136,21 +136,28 @@ export default function App() {
     }
   }
 
-  async function ingestFile(file: File) {
-    setBusy(true);
-    setError(null);
-    try {
-      const body = new FormData();
-      body.append("file", file);
-      const response = await fetch("/api/ingest", { method: "POST", body });
-      if (!response.ok) throw new Error(await readError(response));
-      applyStory(await response.json());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Ingest failed");
-    } finally {
-      setBusy(false);
-    }
+async function ingestFile(file: File) {
+  setBusy(true);
+  setError(null);
+
+  try {
+    const body = new FormData();
+    body.append("file", file);
+
+    const response = await fetch(
+      "https://loom-narrative-engine.onrender.com/api/ingest",
+      { method: "POST", body }
+    );
+
+    if (!response.ok) throw new Error(await readError(response));
+
+    applyStory(await response.json());
+  } catch (err) {
+    setError(err instanceof Error ? err.message : "Ingest failed");
+  } finally {
+    setBusy(false);
   }
+}
 
   async function sendInterview(event?: FormEvent) {
     event?.preventDefault();
