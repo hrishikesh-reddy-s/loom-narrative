@@ -172,15 +172,15 @@ def build_grounding(
 # Story templates
 # ---------------------------------------------------------------------------
 
-def _parallel_title(character: Character, graph: LoreGraph) -> str:
+def _parallel_title(character: Character) -> str:
     return f"Meanwhile: {character.name} and the Hours Between"
 
 
-def _prequel_title(character: Character, graph: LoreGraph) -> str:
+def _prequel_title(character: Character) -> str:
     return f"Before the Light: {character.name}'s First Watch"
 
 
-def _aftermath_title(character: Character, graph: LoreGraph) -> str:
+def _aftermath_title(character: Character) -> str:
     return f"After the Map: {character.name}'s New Shore"
 
 
@@ -261,7 +261,7 @@ def _mara_parallel(grounding: CharacterGrounding, tone: str, target_words: int) 
     return SpinoffDraft(
         character_id=character_slug(char.name),
         spinoff_type="parallel",
-        title=_parallel_title(char, grounding.character),
+        title=_parallel_title(char),
         story="\n\n".join(story_parts),
         canon_anchors=_build_anchors(grounding.events, "Referenced as context for parallel events"),
         invented_elements=[
@@ -317,7 +317,7 @@ def _mara_prequel(grounding: CharacterGrounding, tone: str, target_words: int) -
     return SpinoffDraft(
         character_id=character_slug(char.name),
         spinoff_type="prequel",
-        title=_prequel_title(char, grounding.character),
+        title=_prequel_title(char),
         story="\n\n".join(story_parts),
         canon_anchors=_build_anchors(
             grounding.events,
@@ -380,7 +380,7 @@ def _mara_aftermath(grounding: CharacterGrounding, tone: str, target_words: int)
     return SpinoffDraft(
         character_id=character_slug(char.name),
         spinoff_type="aftermath",
-        title=_aftermath_title(char, grounding.character),
+        title=_aftermath_title(char),
         story="\n\n".join(story_parts),
         canon_anchors=_build_anchors(
             grounding.events,
@@ -425,7 +425,7 @@ def _generic_parallel(char: Character, grounding: CharacterGrounding, tone: str,
     return SpinoffDraft(
         character_id=character_slug(char.name),
         spinoff_type="parallel",
-        title=_parallel_title(char, grounding.character),
+        title=_parallel_title(char),
         story="\n\n".join(story_parts),
         canon_anchors=_build_anchors(grounding.events, "Referenced as context"),
         invented_elements=["Unrecorded parallel hours"],
@@ -460,7 +460,7 @@ def _generic_prequel(char: Character, grounding: CharacterGrounding, tone: str, 
     return SpinoffDraft(
         character_id=character_slug(char.name),
         spinoff_type="prequel",
-        title=_prequel_title(char, grounding.character),
+        title=_prequel_title(char),
         story="\n\n".join(story_parts),
         canon_anchors=_build_anchors(grounding.events, "Future context", fallback=grounding.full_timeline),
         invented_elements=["Pre-story formation"],
@@ -493,7 +493,7 @@ def _generic_aftermath(char: Character, grounding: CharacterGrounding, tone: str
     return SpinoffDraft(
         character_id=character_slug(char.name),
         spinoff_type="aftermath",
-        title=_aftermath_title(char, grounding.character),
+        title=_aftermath_title(char),
         story="\n\n".join(story_parts),
         canon_anchors=_build_anchors(grounding.events, "Preceding events", fallback=grounding.full_timeline),
         invented_elements=["Post-story continuation"],

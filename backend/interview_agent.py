@@ -146,11 +146,8 @@ def _relevant_facts(question: str, known_facts: list[str]) -> list[str]:
 def _weave_answer(character: Character, checkpoint: TimelineCheckpoint, facts: list[str]) -> str:
     voiced = [_first_person(fact, character) for fact in facts]
     role = character.role or "the person you are asking"
-    opening = (
-        f"I am {character.name}, {role}, speaking from this hour"
-        f"{f' ({checkpoint.time_marker.replace('_', ' ')})' if checkpoint.time_marker else ''}."
-    )
-    opening = opening.replace("()", "")
+    time_suffix = f" ({checkpoint.time_marker.replace('_', ' ')})" if checkpoint.time_marker else ""
+    opening = f"I am {character.name}, {role}, speaking from this hour{time_suffix}."
     body = " ".join(voiced)
     return f"{opening} {body}".strip()
 

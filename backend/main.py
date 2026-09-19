@@ -161,12 +161,19 @@ def _effective_question(message: str, history: list[ChatMessage]) -> str:
     stripped = message.strip()
     if not stripped:
         raise HTTPException(status_code=400, detail="message is required")
-    if len(stripped.split()) > 3:
+    if not history:
         return stripped
-    last_user = next((item.content for item in reversed(history) if item.role == "user"), None)
-    if last_user:
-        return f"{last_user}\n{stripped}"
-    return stripped
+    # Include the last 3 exchanges (up to 6 messages) so the character has
+    # genuine conversational memory across turns.
+    recent = history[-6:]
+    lines: list[str] = []
+    for item in recent:
+        if item.role == "user":
+            lines.append(f"You asked: {item.content}")
+        else:
+            lines.append(f"I said: {item.content}")
+    context_block = "\n".join(lines)
+    return f"{context_block}\nYou ask now: {stripped}"
 
 
 async def _read_ingest_payload(request: Request) -> tuple[str, str]:

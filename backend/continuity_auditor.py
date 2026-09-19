@@ -92,7 +92,6 @@ def future_only_tokens(context: NarrativeContext) -> set[str]:
         "not",
         "only",
         "what",
-        "had",
         "left",
     }
     known = _tokens(" ".join(context.known_facts))

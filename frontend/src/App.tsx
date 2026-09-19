@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
-const API_URL = "https://loom-narrative-engine.onrender.com";
+
 
 type Character = {
   id: string;
@@ -153,7 +153,7 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
-      const response = await fetch("https://loom-narrative-engine.onrender.com/api/sample");
+      const response = await fetch("/api/sample");
       if (!response.ok) throw new Error(await readError(response));
       applyStory(await response.json());
     } catch (err) {
@@ -163,42 +163,44 @@ export default function App() {
     }
   }
 
-async function ingestFile(file: File) {
-  setBusy(true);
-  setError(null);
-
-  try {
-    const body = new FormData();
-    body.append("file", file);
-
-    const response = await fetch(
-      "https://loom-narrative-engine.onrender.com/api/ingest",
-      { method: "POST", body }
-    );
-
-    if (!response.ok) throw new Error(await readError(response));
-
-    applyStory(await response.json());
-  } catch (err) {
-    setError(err instanceof Error ? err.message : "Ingest failed");
-  } finally {
-    setBusy(false);
+  async function ingestFile(file: File) {
+    setBusy(true);
+    setError(null);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const response = await fetch("/api/ingest", { method: "POST", body });
+      if (!response.ok) throw new Error(await readError(response));
+      applyStory(await response.json());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ingest failed");
+    } finally {
+      setBusy(false);
+    }
   }
-}
 
   async function sendInterview(event?: FormEvent) {
     event?.preventDefault();
     if (!draft.trim() || !state) return;
     const message = draft.trim();
+    // Snapshot chat BEFORE any state mutation to avoid reading a stale closure.
+    const currentChat = chat;
     setDraft("");
     setChat((prev) => [...prev, { role: "user", content: message }]);
     setBusy(true);
     setError(null);
     try {
-      const history = [...chat, { role: "user" as const, content: message }].map((item) => ({
-        role: item.role,
-        content: item.content,
-      }));
+      // Build history from the pre-mutation snapshot, then append the new
+      // message once. Map "character" → "assistant" for the wire format.
+      const history = [
+        ...currentChat.map((item) => ({
+          role: (item.role === "character" ? "assistant" : item.role) as
+            | "user"
+            | "assistant",
+          content: item.content,
+        })),
+        { role: "user" as const, content: message },
+      ];
       const response = await fetch("/api/interview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
