@@ -14,6 +14,7 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 from lore_agent import Character, KnowledgeSummary, LoreGraph, TimelineCheckpoint
 from narrative_context import build_context, character_slug
 from orchestrator import Orchestrator, OrchestratorRequest
+from spinoff_agent import CanonAnchor, SpinoffDraft, SpinoffType, StoryLength
 
 BACKEND_DIR = Path(__file__).resolve().parent
 SAMPLE_STORY_PATH = BACKEND_DIR / "fixtures" / "short_story.txt"
@@ -82,6 +83,30 @@ class InterviewBody(BaseModel):
 class PerspectiveBody(BaseModel):
     character_id: str
     checkpoint_id: str
+
+
+class SpinoffBody(BaseModel):
+    character_id: str
+    spinoff_type: SpinoffType
+    tone: str = Field(default="", description="Tonal direction; blank = match the source.")
+    length: StoryLength = "medium"
+    focus_prompt: str = Field(default="", description="Optional creative prompt.")
+    language: str = Field(default="", description="Target language; blank = source language.")
+
+
+class CanonAnchorOut(BaseModel):
+    event_id: str
+    event_title: str
+    how_used: str
+
+
+class SpinoffResponse(BaseModel):
+    title: str
+    story: str
+    canon_anchors: list[CanonAnchorOut]
+    invented_elements: list[str]
+    audit: str
+    trace: list[str]
 
 
 class StoryState(BaseModel):
@@ -272,3 +297,46 @@ def perspective(body: PerspectiveBody) -> dict[str, Any]:
         "critique": result.critique,
         "trace": result.trace,
     }
+
+
+@app.post("/api/projects/{project_id}/spinoff", response_model=SpinoffResponse)
+def spinoff(project_id: str, body: SpinoffBody) -> SpinoffResponse:
+    _, graph = _require_graph()
+    try:
+        from narrative_context import resolve_character as _rc
+        _rc(graph, body.character_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    try:
+        result = orchestrator.run(
+            OrchestratorRequest(
+                capability="spinoff",
+                graph=graph,
+                character_id=body.character_id,
+                spinoff_type=body.spinoff_type,
+                tone=body.tone,
+                length=body.length,
+                focus_prompt=body.focus_prompt,
+                language=body.language,
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    draft = result.spinoff
+    return SpinoffResponse(
+        title=draft.title if draft else "Untitled Spin-off",
+        story=result.text,
+        canon_anchors=[
+            CanonAnchorOut(
+                event_id=a.event_id,
+                event_title=a.event_title,
+                how_used=a.how_used,
+            )
+            for a in (draft.canon_anchors if draft else [])
+        ],
+        invented_elements=draft.invented_elements if draft else [],
+        audit=result.critique,
+        trace=result.trace,
+    )

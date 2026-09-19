@@ -41,7 +41,25 @@ type ChatItem = {
   refused?: boolean;
 };
 
-type Tab = "interview" | "perspective";
+type SpinoffType = "parallel" | "prequel" | "aftermath";
+type StoryLength = "short" | "medium" | "long";
+
+type CanonAnchor = {
+  event_id: string;
+  event_title: string;
+  how_used: string;
+};
+
+type SpinoffResult = {
+  title: string;
+  story: string;
+  canon_anchors: CanonAnchor[];
+  invented_elements: string[];
+  audit: string;
+  trace: string[];
+};
+
+type Tab = "interview" | "perspective" | "spinoff";
 
 function orderOf(checkpoints: Checkpoint[], id: string | null): number {
   if (!id) return -1;
@@ -91,6 +109,15 @@ export default function App() {
     interior: string | null;
     sensory_focus: string[];
   } | null>(null);
+
+  // Spin-off state
+  const [spinoffType, setSpinoffType] = useState<SpinoffType>("parallel");
+  const [spinoffTone, setSpinoffTone] = useState("");
+  const [spinoffLength, setSpinoffLength] = useState<StoryLength>("medium");
+  const [spinoffFocus, setSpinoffFocus] = useState("");
+  const [spinoffResult, setSpinoffResult] = useState<SpinoffResult | null>(null);
+  const [anchorsOpen, setAnchorsOpen] = useState(false);
+  const [inventedOpen, setInventedOpen] = useState(false);
 
   const character = state?.characters.find((item) => item.id === characterId);
   const checkpoints = state?.checkpoints ?? [];
@@ -230,6 +257,51 @@ async function ingestFile(file: File) {
     setScene(null);
   }
 
+  async function runSpinoff() {
+    if (!state) return;
+    setBusy(true);
+    setError(null);
+    setSpinoffResult(null);
+    try {
+      const response = await fetch("/api/projects/default/spinoff", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          character_id: characterId,
+          spinoff_type: spinoffType,
+          tone: spinoffTone,
+          length: spinoffLength,
+          focus_prompt: spinoffFocus,
+        }),
+      });
+      if (!response.ok) throw new Error(await readError(response));
+      const data: SpinoffResult = await response.json();
+      setSpinoffResult(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Spin-off failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function copySpinoff() {
+    if (!spinoffResult) return;
+    const text = `${spinoffResult.title}\n\n${spinoffResult.story}`;
+    void navigator.clipboard.writeText(text);
+  }
+
+  function downloadSpinoff() {
+    if (!spinoffResult) return;
+    const text = `${spinoffResult.title}\n\n${spinoffResult.story}`;
+    const blob = new Blob([text], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${spinoffResult.title.replace(/[^a-zA-Z0-9]+/g, "_")}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="min-h-screen bg-ink text-mist">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(196,165,116,0.08),_transparent_55%)]" />
@@ -305,6 +377,14 @@ async function ingestFile(file: File) {
                 ) : null}
               </section>
 
+              {tab === "spinoff" ? (
+                <section className="rounded-3xl border border-line bg-panel p-4">
+                  <p className="text-xs tracking-[0.2em] text-mute uppercase">Timeline checkpoint</p>
+                  <p className="mt-2 text-sm text-mute italic">
+                    Spin-offs span the full timeline — the checkpoint slider doesn’t apply here.
+                  </p>
+                </section>
+              ) : (
               <section className="rounded-3xl border border-line bg-panel p-4">
                 <div className="flex items-baseline justify-between gap-3">
                   <label className="text-xs tracking-[0.2em] text-mute uppercase">Timeline checkpoint</label>
@@ -339,6 +419,7 @@ async function ingestFile(file: File) {
                   <p className="mt-2 text-xs text-sea">{checkpoint.time_marker.replaceAll("_", " ")}</p>
                 ) : null}
               </section>
+              )}
 
               <section className="rounded-3xl border border-line bg-panel">
                 <button
@@ -386,14 +467,14 @@ async function ingestFile(file: File) {
                   [
                     ["interview", "Interactive interview"],
                     ["perspective", "Perspective shift"],
+                    ["spinoff", "Character spin-off"],
                   ] as const
                 ).map(([id, label]) => (
                   <button
                     key={id}
                     type="button"
                     onClick={() => setTab(id)}
-                    className={`rounded-full px-4 py-2 text-sm ${
-                      tab === id ? "bg-brass text-ink" : "text-mute hover:text-mist"
+                    className={`rounded-full px-4 py-2 text-sm ${tab === id ? "bg-brass text-ink" : "text-mute hover:text-mist"
                     }`}
                   >
                     {label}
@@ -453,6 +534,190 @@ async function ingestFile(file: File) {
                       </button>
                     </div>
                   </form>
+                </div>
+              ) : tab === "spinoff" ? (
+                <div className="flex flex-1 flex-col p-5 overflow-y-auto">
+                  {/* Controls */}
+                  <div className="mb-5 space-y-4">
+                    {/* Spinoff type */}
+                    <div>
+                      <label className="text-xs tracking-[0.2em] text-mute uppercase">Type</label>
+                      <div className="mt-2 flex gap-2">
+                        {(
+                          [
+                            ["parallel", "Parallel", "Events alongside the main plot"],
+                            ["prequel", "Prequel", "Before the story begins"],
+                            ["aftermath", "Aftermath", "After the final event"],
+                          ] as const
+                        ).map(([value, label, desc]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => setSpinoffType(value)}
+                            className={`flex-1 rounded-2xl border px-3 py-2 text-left text-sm transition-colors ${
+                              spinoffType === value
+                                ? "border-brass bg-brass/15 text-mist"
+                                : "border-line text-mute hover:border-brass/50"
+                            }`}
+                          >
+                            <span className="font-medium">{label}</span>
+                            <span className="mt-0.5 block text-[11px] text-mute">{desc}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Length */}
+                    <div>
+                      <label className="text-xs tracking-[0.2em] text-mute uppercase">Length</label>
+                      <div className="mt-2 flex gap-2">
+                        {(
+                          [
+                            ["short", "Short", "~500 words"],
+                            ["medium", "Medium", "~1000 words"],
+                            ["long", "Long", "~2000 words"],
+                          ] as const
+                        ).map(([value, label, hint]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => setSpinoffLength(value)}
+                            className={`rounded-full border px-4 py-2 text-sm transition-colors ${
+                              spinoffLength === value
+                                ? "border-brass bg-brass/15 text-mist"
+                                : "border-line text-mute hover:border-brass/50"
+                            }`}
+                          >
+                            {label} <span className="text-[11px] text-mute">({hint})</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Tone */}
+                    <div>
+                      <label className="text-xs tracking-[0.2em] text-mute uppercase">Tone</label>
+                      <input
+                        type="text"
+                        value={spinoffTone}
+                        onChange={(e) => setSpinoffTone(e.target.value)}
+                        placeholder="Match the source"
+                        className="mt-2 w-full rounded-2xl border border-line bg-ink px-3 py-2 text-sm outline-none focus:border-brass"
+                      />
+                    </div>
+
+                    {/* Focus prompt */}
+                    <div>
+                      <label className="text-xs tracking-[0.2em] text-mute uppercase">Your idea (optional)</label>
+                      <textarea
+                        value={spinoffFocus}
+                        onChange={(e) => setSpinoffFocus(e.target.value)}
+                        rows={2}
+                        placeholder="Describe what the spin-off should explore…"
+                        className="mt-2 w-full resize-none rounded-2xl border border-line bg-ink px-3 py-2 text-sm outline-none focus:border-brass"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => void runSpinoff()}
+                      disabled={busy}
+                      className="w-fit rounded-full bg-brass px-5 py-2 text-sm font-medium text-ink disabled:opacity-40"
+                    >
+                      {busy ? "Generating…" : "Generate spin-off"}
+                    </button>
+                  </div>
+
+                  {/* Output */}
+                  {spinoffResult ? (
+                    <article className="space-y-5 border-t border-line pt-5">
+                      <h2 className="font-display text-2xl text-brass">{spinoffResult.title}</h2>
+                      <div className="max-w-prose text-sm leading-relaxed text-mist/95 whitespace-pre-line">
+                        {spinoffResult.story}
+                      </div>
+
+                      {/* Canon anchors */}
+                      <div className="rounded-2xl border border-line">
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between px-4 py-3 text-left"
+                          onClick={() => setAnchorsOpen((o) => !o)}
+                        >
+                          <span className="text-xs tracking-[0.18em] text-mute uppercase">
+                            Canon anchors ({spinoffResult.canon_anchors.length})
+                          </span>
+                          <span className="text-brass">{anchorsOpen ? "–" : "+"}</span>
+                        </button>
+                        {anchorsOpen ? (
+                          <ul className="space-y-2 border-t border-line px-4 py-3">
+                            {spinoffResult.canon_anchors.map((a, i) => (
+                              <li key={`${a.event_id}-${i}`} className="rounded-xl bg-panel-2 p-2 text-xs leading-relaxed">
+                                <span className="font-mono text-brass">{a.event_id}</span>{" "}
+                                <span className="text-mist">{a.event_title}</span>
+                                <span className="block mt-0.5 text-mute">{a.how_used}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+
+                      {/* Invented elements */}
+                      <div className="rounded-2xl border border-line">
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between px-4 py-3 text-left"
+                          onClick={() => setInventedOpen((o) => !o)}
+                        >
+                          <span className="text-xs tracking-[0.18em] text-mute uppercase">
+                            New in this spin-off ({spinoffResult.invented_elements.length})
+                          </span>
+                          <span className="text-brass">{inventedOpen ? "–" : "+"}</span>
+                        </button>
+                        {inventedOpen ? (
+                          <ul className="space-y-1 border-t border-line px-4 py-3 text-xs text-mute">
+                            {spinoffResult.invented_elements.map((item) => (
+                              <li key={item}>· {item}</li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+
+                      {/* Audit badge and trace */}
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span className={`rounded-full px-3 py-1 text-xs font-medium ${
+                          spinoffResult.audit.toLowerCase().includes("passes") || spinoffResult.audit.toLowerCase().includes("holds")
+                            ? "bg-green-900/40 text-green-300"
+                            : "bg-yellow-900/40 text-yellow-300"
+                        }`}>
+                          {spinoffResult.audit.toLowerCase().includes("passes") || spinoffResult.audit.toLowerCase().includes("holds")
+                            ? "✓ Audit passed" : "⚠ Accepted with warnings"}
+                        </span>
+                        <span className="text-[11px] text-mute">
+                          {spinoffResult.trace.join(" → ")}
+                        </span>
+                      </div>
+
+                      {/* Copy and Download */}
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={copySpinoff}
+                          className="rounded-full border border-line px-4 py-2 text-xs text-mute hover:border-brass hover:text-brass"
+                        >
+                          Copy
+                        </button>
+                        <button
+                          type="button"
+                          onClick={downloadSpinoff}
+                          className="rounded-full border border-line px-4 py-2 text-xs text-mute hover:border-brass hover:text-brass"
+                        >
+                          Download .txt
+                        </button>
+                      </div>
+                    </article>
+                  ) : (
+                    <p className="text-sm text-mute">No spin-off generated yet. Choose a type and click Generate.</p>
+                  )}
                 </div>
               ) : (
                 <div className="flex flex-1 flex-col p-5">
