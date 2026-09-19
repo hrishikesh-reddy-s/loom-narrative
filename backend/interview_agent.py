@@ -9,11 +9,19 @@ from pydantic import BaseModel, Field
 from lore_agent import Character, KnowledgeSummary, TimelineCheckpoint
 from narrative_context import NarrativeContext, flatten_facts
 
+
 _WORD = re.compile(r"[a-z0-9']+")
+
 _FOURTH_WALL = re.compile(
     r"\b(checkpoint|lore graph|fourth wall|as an ai|language model|"
     r"this story|the reader|the player|narrative engine|orchestrator|"
     r"cp_\d+)\b",
+    re.I,
+)
+
+_GREETING = re.compile(
+    r"^\s*(hi|hey|hello|heyy|hii|ho|hiya|yo|"
+    r"good morning|good evening)\s*[!.?,]*\s*$",
     re.I,
 )
 
@@ -32,69 +40,18 @@ def _tokens(text: str) -> set[str]:
     return set(_WORD.findall(text.lower()))
 
 
-def _ngrams(text: str, sizes: tuple[int, ...] = (2, 3, 4)) -> set[str]:
+def _ngrams(
+    text: str,
+    sizes: tuple[int, ...] = (2, 3, 4),
+) -> set[str]:
     words = _WORD.findall(text.lower())
     grams: set[str] = set()
 
     for size in sizes:
         for index in range(0, len(words) - size + 1):
-            grams.add(" ".join(words[index : index + size]))
+            grams.add(" ".join(words[index:index + size]))
 
     return grams
-
-
-def question_asks_about_future(
-    question: str,
-    future_facts: list[str],
-    known_facts: list[str],
-) -> bool:
-    if not future_facts:
-        return False
-
-    allowed = _ngrams(" ".join(known_facts)) | _tokens(" ".join(known_facts))
-    future_grams = _ngrams(" ".join(future_facts))
-
-    future_only = {
-        gram
-        for gram in future_grams
-        if gram not in _ngrams(" ".join(known_facts))
-    }
-
-    asked = _ngrams(question) | _tokens(question)
-
-    if asked & future_only:
-        return True
-
-    future_unigrams = _tokens(" ".join(future_facts)) - allowed
-    distinctive = {
-        token for token in future_unigrams
-        if len(token) >= 5
-    }
-
-    if asked & distinctive:
-        return True
-
-    leave_intent = bool(
-        re.search(r"\b(leave|leaving|left)\b", question, re.I)
-    )
-
-    future_has_leave = bool(
-        re.search(r"\bleave\b", " ".join(future_facts), re.I)
-    )
-
-    leave_already_known = bool(
-        re.search(r"\bleave\b", " ".join(known_facts), re.I)
-    )
-
-    return (
-        leave_intent
-        and future_has_leave
-        and not leave_already_known
-    )
-_GREETING = re.compile(
-    r"^\s*(hi|hey|hello|heyy|hii|ho|hiya|yo|good morning|good evening)\s*[!.?,]*\s*$",
-    re.I,
-)
 
 
 def _is_greeting(question: str) -> bool:
@@ -112,12 +69,86 @@ def _greeting_for(character: Character) -> str:
 
     if name.lower().startswith("kellan"):
         return (
-            f"Hello. I'm {name}. I have little time, but ask what you need to know."
+            f"Hello. I'm {name}. I have little time, "
+            "but ask what you need to know."
         )
 
     return f"Hello. I'm {name}. What would you like to know?"
 
-def _first_person(fact: str, character: Character) -> str:
+
+def question_asks_about_future(
+    question: str,
+    future_facts: list[str],
+    known_facts: list[str],
+) -> bool:
+    if not future_facts:
+        return False
+
+    known_text = " ".join(known_facts)
+    future_text = " ".join(future_facts)
+
+    allowed = _ngrams(known_text) | _tokens(known_text)
+
+    future_grams = _ngrams(future_text)
+    known_grams = _ngrams(known_text)
+
+    future_only = {
+        gram
+        for gram in future_grams
+        if gram not in known_grams
+    }
+
+    asked = _ngrams(question) | _tokens(question)
+
+    if asked & future_only:
+        return True
+
+    future_unigrams = _tokens(future_text) - allowed
+
+    distinctive = {
+        token
+        for token in future_unigrams
+        if len(token) >= 5
+    }
+
+    if asked & distinctive:
+        return True
+
+    leave_intent = bool(
+        re.search(
+            r"\b(leave|leaving|left)\b",
+            question,
+            re.I,
+        )
+    )
+
+    future_has_leave = bool(
+        re.search(
+            r"\bleave\b",
+            future_text,
+            re.I,
+        )
+    )
+
+    leave_already_known = bool(
+        re.search(
+            r"\bleave\b",
+            known_text,
+            re.I,
+        )
+    )
+
+    return (
+        leave_intent
+        and future_has_leave
+        and not leave_already_known
+    )
+
+
+def _first_person(
+    fact: str,
+    character: Character,
+) -> str:
     text = fact
 
     names = sorted(
@@ -133,17 +164,80 @@ def _first_person(fact: str, character: Character) -> str:
             text,
         )
 
-    text = re.sub(r"\bI Vale\b", "I", text)
-    text = re.sub(r"\bshe had\b", "I had", text, flags=re.I)
-    text = re.sub(r"\bshe was\b", "I was", text, flags=re.I)
-    text = re.sub(r"\bshe believed\b", "I believed", text, flags=re.I)
-    text = re.sub(r"\bshe thought\b", "I thought", text, flags=re.I)
-    text = re.sub(r"\bshe learned\b", "I learned", text, flags=re.I)
-    text = re.sub(r"\bshe found\b", "I found", text, flags=re.I)
-    text = re.sub(r"\bshe agreed\b", "I agreed", text, flags=re.I)
-    text = re.sub(r"\bshe did not\b", "I did not", text, flags=re.I)
-    text = re.sub(r"\bher duty\b", "my duty", text, flags=re.I)
-    text = re.sub(r"\bThat night I\b", "Tonight I", text)
+    text = re.sub(
+        r"\bI Vale\b",
+        "I",
+        text,
+    )
+
+    text = re.sub(
+        r"\bshe had\b",
+        "I had",
+        text,
+        flags=re.I,
+    )
+
+    text = re.sub(
+        r"\bshe was\b",
+        "I was",
+        text,
+        flags=re.I,
+    )
+
+    text = re.sub(
+        r"\bshe believed\b",
+        "I believed",
+        text,
+        flags=re.I,
+    )
+
+    text = re.sub(
+        r"\bshe thought\b",
+        "I thought",
+        text,
+        flags=re.I,
+    )
+
+    text = re.sub(
+        r"\bshe learned\b",
+        "I learned",
+        text,
+        flags=re.I,
+    )
+
+    text = re.sub(
+        r"\bshe found\b",
+        "I found",
+        text,
+        flags=re.I,
+    )
+
+    text = re.sub(
+        r"\bshe agreed\b",
+        "I agreed",
+        text,
+        flags=re.I,
+    )
+
+    text = re.sub(
+        r"\bshe did not\b",
+        "I did not",
+        text,
+        flags=re.I,
+    )
+
+    text = re.sub(
+        r"\bher duty\b",
+        "my duty",
+        text,
+        flags=re.I,
+    )
+
+    text = re.sub(
+        r"\bThat night I\b",
+        "Tonight I",
+        text,
+    )
 
     if text and text[0].islower():
         text = text[0].upper() + text[1:]
@@ -180,37 +274,10 @@ def _confusion_for(
         return _kellan_confusion()
 
     return (
-        f"I hear your question, but that has not happened to me. "
-        f"I only know my life as it stands."
+        "I hear your question, but that has not happened to me. "
+        "I only know my life as it stands."
     )
 
-_GREETING = re.compile(
-    r"^\s*(hi|hey|hello|heyy|hii|ho|hiya|yo|good morning|good evening)\s*[!.?,]*\s*$",
-    re.I,
-)
-
-
-def _is_greeting(question: str) -> bool:
-    return bool(_GREETING.match(question))
-
-
-def _greeting_for(character: Character) -> str:
-    name = character.name
-
-    if name.lower().startswith("mara"):
-        return (
-            f"Hello. I'm {name}. The lamp is burning, and the coast is quiet. "
-            "What would you like to know?"
-        )
-
-    if name.lower().startswith("kellan"):
-        return (
-            f"Hello. I'm {name}. I have little time, but ask what you need to know."
-        )
-
-    return (
-        f"Hello. I'm {name}. What would you like to know?"
-    )
 
 def _relevant_facts(
     question: str,
@@ -248,13 +315,22 @@ def _relevant_facts(
         "about",
         "tell",
         "me",
+        "is",
+        "are",
+        "was",
+        "were",
     }
 
     scored: list[tuple[int, str]] = []
 
     for fact in available_facts:
-        overlap = len(_tokens(fact) & q_tokens)
-        scored.append((overlap, fact))
+        overlap = len(
+            _tokens(fact) & q_tokens
+        )
+
+        scored.append(
+            (overlap, fact)
+        )
 
     scored.sort(
         key=lambda item: item[0],
@@ -286,24 +362,34 @@ def _previously_used_facts(
     previous_text = " ".join(
         item.get("content", "")
         for item in history
-        if item.get("role") in {"character", "assistant"}
+        if item.get("role") in {
+            "character",
+            "assistant",
+        }
     )
 
     if not previous_text:
         return []
 
     previous_tokens = _tokens(previous_text)
+
     used: list[str] = []
 
     for fact in known_facts:
-        voiced = _first_person(fact, character)
+        voiced = _first_person(
+            fact,
+            character,
+        )
+
         fact_tokens = _tokens(voiced)
 
         if not fact_tokens:
             continue
 
         overlap = (
-            len(fact_tokens & previous_tokens)
+            len(
+                fact_tokens & previous_tokens
+            )
             / len(fact_tokens)
         )
 
@@ -320,7 +406,10 @@ def _weave_answer(
     include_intro: bool = True,
 ) -> str:
     voiced = [
-        _first_person(fact, character)
+        _first_person(
+            fact,
+            character,
+        )
         for fact in facts
     ]
 
@@ -329,14 +418,22 @@ def _weave_answer(
     if not include_intro:
         return body
 
-    role = character.role or "the person you are asking"
-
-    opening = (
-        f"I am {character.name}, {role}, speaking from this hour"
-        f"{f' ({checkpoint.time_marker.replace("_", " ")})' if checkpoint.time_marker else ''}."
+    role = (
+        character.role
+        or "the person you are asking"
     )
 
-    opening = opening.replace("()", "")
+    time_marker = ""
+
+    if checkpoint.time_marker:
+        time_marker = (
+            f" ({checkpoint.time_marker.replace('_', ' ')})"
+        )
+
+    opening = (
+        f"I am {character.name}, {role}, "
+        f"speaking from this hour{time_marker}."
+    )
 
     return f"{opening} {body}".strip()
 
@@ -361,10 +458,12 @@ class InterviewAgent:
             else flatten_facts(knowledge_slice)
         )
 
-        # Active slice is authoritative for "what is true now";
-        # remembered facts from context cover earlier lived events
+        # Active slice is authoritative for what is true now.
+        # Remembered facts from context cover earlier lived events
         # still known to the speaker.
-        slice_facts = flatten_facts(knowledge_slice)
+        slice_facts = flatten_facts(
+            knowledge_slice
+        )
 
         for fact in slice_facts:
             if fact not in known:
@@ -379,8 +478,9 @@ class InterviewAgent:
         # Prevent the character from breaking the fourth wall.
         if _FOURTH_WALL.search(question):
             answer = (
-                "I don't know those words. Speak plainly. Ask me about the lamp, "
-                "the water, or the hours I have actually lived."
+                "I don't know those words. Speak plainly. "
+                "Ask me about the lamp, the water, or the "
+                "hours I have actually lived."
             )
 
             return InterviewTurn(
@@ -392,9 +492,21 @@ class InterviewAgent:
                 used_facts=[],
             )
 
+        # Handle greetings separately so they don't cause
+        # the first story facts to be returned.
+        if _is_greeting(question):
+            return InterviewTurn(
+                character_id=character.name,
+                checkpoint_id=checkpoint.id,
+                question=question,
+                answer=_greeting_for(character),
+                refused_future=False,
+                used_facts=[],
+            )
+
         # Prevent the character from talking about events
         # that have not happened at the selected checkpoint.
-                if question_asks_about_future(
+        if question_asks_about_future(
             question,
             future,
             known,
@@ -411,44 +523,9 @@ class InterviewAgent:
                 used_facts=slice_facts[:2],
             )
 
-        if _is_greeting(question):
-            return InterviewTurn(
-                character_id=character.name,
-                checkpoint_id=checkpoint.id,
-                question=question,
-                answer=_greeting_for(character),
-                refused_future=False,
-                used_facts=[],
-            )
-
-        conversation_history = history or []
-
-        # Find facts that were already mentioned earlier
-        # in this conversation.
-        used_before = _previously_used_facts(
-            character,
-            known,
-            conversation_history,
+        conversation_history = (
+            history or []
         )
-
-        # Prefer facts relevant to the new question while
-        # avoiding facts already used in previous answers.
-        used = _relevant_facts(
-            question,
-            known,
-            excluded_facts=used_before,
-        )
-        if _is_greeting(question):
-            return InterviewTurn(
-                character_id=character.name,
-                checkpoint_id=checkpoint.id,
-                question=question,
-                answer=_greeting_for(character),
-                refused_future=False,
-                used_facts=[],
-            )
-
-        conversation_history = history or []
 
         # Find facts that were already mentioned earlier
         # in this conversation.
@@ -466,8 +543,11 @@ class InterviewAgent:
             excluded_facts=used_before,
         )
 
-        # Only introduce the character on the first answer.
-        include_intro = not bool(conversation_history)
+        # Only introduce the character on the first
+        # substantive answer.
+        include_intro = not bool(
+            conversation_history
+        )
 
         answer = _weave_answer(
             character,
