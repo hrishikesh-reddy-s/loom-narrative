@@ -110,7 +110,21 @@ def _confusion_for(character: Character, question: str) -> str:
     )
 
 
-def _relevant_facts(question: str, known_facts: list[str]) -> list[str]:
+def _relevant_facts(
+    question: str,
+    known_facts: list[str],
+    excluded_facts: list[str] | None = None,
+) -> list[str]:
+    excluded = set(excluded_facts or [])
+
+    available_facts = [
+        fact for fact in known_facts
+        if fact not in excluded
+    ]
+
+    if not available_facts:
+        available_facts = known_facts
+
     q_tokens = _tokens(question) - {
         "what",
         "when",
@@ -132,15 +146,21 @@ def _relevant_facts(question: str, known_facts: list[str]) -> list[str]:
         "tell",
         "me",
     }
+
     scored: list[tuple[int, str]] = []
-    for fact in known_facts:
+
+    for fact in available_facts:
         overlap = len(_tokens(fact) & q_tokens)
         scored.append((overlap, fact))
+
     scored.sort(key=lambda item: item[0], reverse=True)
+
     picked = [fact for score, fact in scored if score > 0][:3]
+
     if picked:
         return picked
-    return known_facts[:3]
+
+    return available_facts[:3]
 
 
 def _weave_answer(character: Character, checkpoint: TimelineCheckpoint, facts: list[str]) -> str:
