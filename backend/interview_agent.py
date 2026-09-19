@@ -35,37 +35,80 @@ def _tokens(text: str) -> set[str]:
 def _ngrams(text: str, sizes: tuple[int, ...] = (2, 3, 4)) -> set[str]:
     words = _WORD.findall(text.lower())
     grams: set[str] = set()
+
     for size in sizes:
         for index in range(0, len(words) - size + 1):
             grams.add(" ".join(words[index : index + size]))
+
     return grams
 
 
-def question_asks_about_future(question: str, future_facts: list[str], known_facts: list[str]) -> bool:
+def question_asks_about_future(
+    question: str,
+    future_facts: list[str],
+    known_facts: list[str],
+) -> bool:
     if not future_facts:
         return False
+
     allowed = _ngrams(" ".join(known_facts)) | _tokens(" ".join(known_facts))
     future_grams = _ngrams(" ".join(future_facts))
-    future_only = {gram for gram in future_grams if gram not in _ngrams(" ".join(known_facts))}
+
+    future_only = {
+        gram
+        for gram in future_grams
+        if gram not in _ngrams(" ".join(known_facts))
+    }
+
     asked = _ngrams(question) | _tokens(question)
+
     if asked & future_only:
         return True
-    # Distinctive future unigrams the question may use (leave/leaving/inland).
+
     future_unigrams = _tokens(" ".join(future_facts)) - allowed
-    distinctive = {token for token in future_unigrams if len(token) >= 5}
+    distinctive = {
+        token for token in future_unigrams
+        if len(token) >= 5
+    }
+
     if asked & distinctive:
         return True
-    leave_intent = bool(re.search(r"\b(leave|leaving|left)\b", question, re.I))
-    future_has_leave = bool(re.search(r"\bleave\b", " ".join(future_facts), re.I))
-    leave_already_known = bool(re.search(r"\bleave\b", " ".join(known_facts), re.I))
-    return leave_intent and future_has_leave and not leave_already_known
+
+    leave_intent = bool(
+        re.search(r"\b(leave|leaving|left)\b", question, re.I)
+    )
+
+    future_has_leave = bool(
+        re.search(r"\bleave\b", " ".join(future_facts), re.I)
+    )
+
+    leave_already_known = bool(
+        re.search(r"\bleave\b", " ".join(known_facts), re.I)
+    )
+
+    return (
+        leave_intent
+        and future_has_leave
+        and not leave_already_known
+    )
 
 
 def _first_person(fact: str, character: Character) -> str:
     text = fact
-    names = sorted({character.name, *character.aliases}, key=len, reverse=True)
+
+    names = sorted(
+        {character.name, *character.aliases},
+        key=len,
+        reverse=True,
+    )
+
     for name in names:
-        text = re.sub(rf"\b{re.escape(name)}\b", "I", text)
+        text = re.sub(
+            rf"\b{re.escape(name)}\b",
+            "I",
+            text,
+        )
+
     text = re.sub(r"\bI Vale\b", "I", text)
     text = re.sub(r"\bshe had\b", "I had", text, flags=re.I)
     text = re.sub(r"\bshe was\b", "I was", text, flags=re.I)
@@ -77,13 +120,16 @@ def _first_person(fact: str, character: Character) -> str:
     text = re.sub(r"\bshe did not\b", "I did not", text, flags=re.I)
     text = re.sub(r"\bher duty\b", "my duty", text, flags=re.I)
     text = re.sub(r"\bThat night I\b", "Tonight I", text)
+
     if text and text[0].islower():
         text = text[0].upper() + text[1:]
+
     return text
 
 
 def _mara_confusion(question: str) -> str:
     _ = question
+
     return (
         "I don't know what you mean. The lamp is still burning and this gallery "
         "is still mine to walk. I keep the light. I have not gone anywhere. "
@@ -99,14 +145,19 @@ def _kellan_confusion() -> str:
     )
 
 
-def _confusion_for(character: Character, question: str) -> str:
+def _confusion_for(
+    character: Character,
+    question: str,
+) -> str:
     if character.name.lower().startswith("mara"):
         return _mara_confusion(question)
+
     if character.name.lower().startswith("kellan"):
         return _kellan_confusion()
+
     return (
-        f"I hear your question, but that has not happened to me. I only know my "
-        f"life as it stands."
+        f"I hear your question, but that has not happened to me. "
+        f"I only know my life as it stands."
     )
 
 
@@ -118,7 +169,8 @@ def _relevant_facts(
     excluded = set(excluded_facts or [])
 
     available_facts = [
-        fact for fact in known_facts
+        fact
+        for fact in known_facts
         if fact not in excluded
     ]
 
@@ -153,9 +205,16 @@ def _relevant_facts(
         overlap = len(_tokens(fact) & q_tokens)
         scored.append((overlap, fact))
 
-    scored.sort(key=lambda item: item[0], reverse=True)
+    scored.sort(
+        key=lambda item: item[0],
+        reverse=True,
+    )
 
-    picked = [fact for score, fact in scored if score > 0][:3]
+    picked = [
+        fact
+        for score, fact in scored
+        if score > 0
+    ][:3]
 
     if picked:
         return picked
@@ -163,15 +222,71 @@ def _relevant_facts(
     return available_facts[:3]
 
 
-def _weave_answer(character: Character, checkpoint: TimelineCheckpoint, facts: list[str]) -> str:
-    voiced = [_first_person(fact, character) for fact in facts]
+def _previously_used_facts(
+    character: Character,
+    known_facts: list[str],
+    history: list[dict[str, str]],
+) -> list[str]:
+    """
+    Find facts that the character has already mentioned
+    during this conversation.
+    """
+
+    previous_text = " ".join(
+        item.get("content", "")
+        for item in history
+        if item.get("role") in {"character", "assistant"}
+    )
+
+    if not previous_text:
+        return []
+
+    previous_tokens = _tokens(previous_text)
+    used: list[str] = []
+
+    for fact in known_facts:
+        voiced = _first_person(fact, character)
+        fact_tokens = _tokens(voiced)
+
+        if not fact_tokens:
+            continue
+
+        overlap = (
+            len(fact_tokens & previous_tokens)
+            / len(fact_tokens)
+        )
+
+        if overlap >= 0.65:
+            used.append(fact)
+
+    return used
+
+
+def _weave_answer(
+    character: Character,
+    checkpoint: TimelineCheckpoint,
+    facts: list[str],
+    include_intro: bool = True,
+) -> str:
+    voiced = [
+        _first_person(fact, character)
+        for fact in facts
+    ]
+
+    body = " ".join(voiced).strip()
+
+    if not include_intro:
+        return body
+
     role = character.role or "the person you are asking"
+
     opening = (
         f"I am {character.name}, {role}, speaking from this hour"
-        f"{f' ({checkpoint.time_marker.replace('_', ' ')})' if checkpoint.time_marker else ''}."
+        f"{f' ({checkpoint.time_marker.replace("_", " ")})' if checkpoint.time_marker else ''}."
     )
+
     opening = opening.replace("()", "")
-    body = " ".join(voiced)
+
     return f"{opening} {body}".strip()
 
 
@@ -186,21 +301,37 @@ class InterviewAgent:
         knowledge_slice: list[KnowledgeSummary],
         question: str,
         context: NarrativeContext | None = None,
+        history: list[dict[str, str]] | None = None,
     ) -> InterviewTurn:
-        known = list(context.known_facts) if context else flatten_facts(knowledge_slice)
-        # Active slice is authoritative for "what is true now"; remembered facts
-        # from context cover earlier lived events still known to the speaker.
+
+        known = (
+            list(context.known_facts)
+            if context
+            else flatten_facts(knowledge_slice)
+        )
+
+        # Active slice is authoritative for "what is true now";
+        # remembered facts from context cover earlier lived events
+        # still known to the speaker.
         slice_facts = flatten_facts(knowledge_slice)
+
         for fact in slice_facts:
             if fact not in known:
                 known.append(fact)
-        future = list(context.future_facts) if context else []
 
+        future = (
+            list(context.future_facts)
+            if context
+            else []
+        )
+
+        # Prevent the character from breaking the fourth wall.
         if _FOURTH_WALL.search(question):
             answer = (
                 "I don't know those words. Speak plainly. Ask me about the lamp, "
                 "the water, or the hours I have actually lived."
             )
+
             return InterviewTurn(
                 character_id=character.name,
                 checkpoint_id=checkpoint.id,
@@ -210,22 +341,58 @@ class InterviewAgent:
                 used_facts=[],
             )
 
-        if question_asks_about_future(question, future, known):
+        # Prevent the character from talking about events
+        # that have not happened at the selected checkpoint.
+        if question_asks_about_future(
+            question,
+            future,
+            known,
+        ):
             return InterviewTurn(
                 character_id=character.name,
                 checkpoint_id=checkpoint.id,
                 question=question,
-                answer=_confusion_for(character, question),
+                answer=_confusion_for(
+                    character,
+                    question,
+                ),
                 refused_future=True,
                 used_facts=slice_facts[:2],
             )
 
-        used = _relevant_facts(question, known)
+        conversation_history = history or []
+
+        # Find facts that were already mentioned earlier
+        # in this conversation.
+        used_before = _previously_used_facts(
+            character,
+            known,
+            conversation_history,
+        )
+
+        # Prefer facts relevant to the new question while
+        # avoiding facts already used in previous answers.
+        used = _relevant_facts(
+            question,
+            known,
+            excluded_facts=used_before,
+        )
+
+        # Only introduce the character on the first answer.
+        include_intro = not bool(conversation_history)
+
+        answer = _weave_answer(
+            character,
+            checkpoint,
+            used,
+            include_intro=include_intro,
+        )
+
         return InterviewTurn(
             character_id=character.name,
             checkpoint_id=checkpoint.id,
             question=question,
-            answer=_weave_answer(character, checkpoint, used),
+            answer=answer,
             refused_future=False,
             used_facts=used,
         )
