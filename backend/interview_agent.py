@@ -348,17 +348,50 @@ def _relevant_facts(
     return available_facts[:3]
 
 
-def _weave_answer(character: Character, checkpoint: TimelineCheckpoint, facts: list[str]) -> str:
+def _previously_used_facts(
+    character: Character,
+    known_facts: list[str],
+    history: list[dict[str, str]],
+) -> list[str]:
+    assistant_text = " ".join(
+        item.get("content", "")
+        for item in history
+        if item.get("role") == "assistant"
+    ).lower()
+
+    used: list[str] = []
+
+    for fact in known_facts:
+        voiced = _first_person(fact, character).lower()
+
+        if voiced and voiced in assistant_text:
+            used.append(fact)
+
+    return used
+
+
+def _weave_answer(
+    character: Character,
+    checkpoint: TimelineCheckpoint,
+    facts: list[str],
+    include_intro: bool = True,
+) -> str:
     voiced = [_first_person(fact, character) for fact in facts]
+    body = " ".join(voiced)
+
+    if not include_intro:
+        return body.strip()
+
     role = character.role or "the person you are asking"
+
     opening = (
         f"I am {character.name}, {role}, speaking from this hour"
         f"{f' ({checkpoint.time_marker.replace('_', ' ')})' if checkpoint.time_marker else ''}."
     )
-    opening = opening.replace("()", "")
-    body = " ".join(voiced)
-    return f"{opening} {body}".strip()
 
+    opening = opening.replace("()", "")
+
+    return f"{opening} {body}".strip()
 
 class InterviewAgent:
     """Answers questions strictly in-character using only pre-checkpoint knowledge."""
