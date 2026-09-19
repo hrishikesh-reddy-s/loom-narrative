@@ -91,7 +91,31 @@ def question_asks_about_future(
         and future_has_leave
         and not leave_already_known
     )
+_GREETING = re.compile(
+    r"^\s*(hi|hey|hello|heyy|hii|ho|hiya|yo|good morning|good evening)\s*[!.?,]*\s*$",
+    re.I,
+)
 
+
+def _is_greeting(question: str) -> bool:
+    return bool(_GREETING.match(question))
+
+
+def _greeting_for(character: Character) -> str:
+    name = character.name
+
+    if name.lower().startswith("mara"):
+        return (
+            f"Hello. I'm {name}. The lamp is burning, and the coast is quiet. "
+            "What would you like to know?"
+        )
+
+    if name.lower().startswith("kellan"):
+        return (
+            f"Hello. I'm {name}. I have little time, but ask what you need to know."
+        )
+
+    return f"Hello. I'm {name}. What would you like to know?"
 
 def _first_person(fact: str, character: Character) -> str:
     text = fact
