@@ -153,7 +153,7 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
-      const response = await fetch("https://loom-narrative-engine.onrender.com/api/sample");
+      const response = await fetch("https://loom-narrative-engine.onrender.com/api/interview", {
       if (!response.ok) throw new Error(await readError(response));
       applyStory(await response.json());
     } catch (err) {
