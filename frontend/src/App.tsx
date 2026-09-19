@@ -199,7 +199,7 @@ async function ingestFile(file: File) {
         role: item.role,
         content: item.content,
       }));
-      const response = await fetch("/api/interview", {
+      const response = await fetch("https://loom-narrative-engine.onrender.com/api/interview",  {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
