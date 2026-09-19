@@ -244,20 +244,45 @@ def interview(body: InterviewBody) -> dict[str, Any]:
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+   @app.post("/api/interview")
+def interview(body: InterviewBody) -> dict[str, Any]:
+    _, graph = _require_graph()
+
+    try:
+        build_context(graph, body.character_id, body.checkpoint_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
     question = _effective_question(body.message, body.history)
-     result = orchestrator.run(
-       OrchestratorRequest(
-         capability="interview",
-         graph=graph,
-         character_id=body.character_id,
-         checkpoint_id=body.checkpoint_id,
-         question=question,
-         history=[
-            {"role": item.role, "content": item.content}
-            for item in body.history
-        ],
-     )
-  )
+
+    result = orchestrator.run(
+        OrchestratorRequest(
+            capability="interview",
+            graph=graph,
+            character_id=body.character_id,
+            checkpoint_id=body.checkpoint_id,
+            question=question,
+            history=[
+                {"role": item.role, "content": item.content}
+                for item in body.history
+            ],
+        )
+    )
+
+    turn = result.interview
+
+    return {
+        "character_id": body.character_id,
+        "checkpoint_id": body.checkpoint_id,
+        "message": body.message,
+        "response": result.text,
+        "refused_future": bool(turn.refused_future) if turn else False,
+        "used_facts": turn.used_facts if turn else [],
+        "passed": result.passed,
+        "retries": result.retries,
+        "critique": result.critique,
+        "trace": result.trace,
+    }
     turn = result.interview
     return {
         "character_id": body.character_id,
