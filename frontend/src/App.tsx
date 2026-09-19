@@ -226,7 +226,7 @@ async function ingestFile(file: File) {
     setBusy(true);
     setError(null);
     try {
-      const response = await fetch("/api/perspective", {
+      const response = await fetch("https://loom-narrative-engine.onrender.com/api/perspective", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
