@@ -160,6 +160,33 @@ def _confusion_for(
         f"I only know my life as it stands."
     )
 
+_GREETING = re.compile(
+    r"^\s*(hi|hey|hello|heyy|hii|ho|hiya|yo|good morning|good evening)\s*[!.?,]*\s*$",
+    re.I,
+)
+
+
+def _is_greeting(question: str) -> bool:
+    return bool(_GREETING.match(question))
+
+
+def _greeting_for(character: Character) -> str:
+    name = character.name
+
+    if name.lower().startswith("mara"):
+        return (
+            f"Hello. I'm {name}. The lamp is burning, and the coast is quiet. "
+            "What would you like to know?"
+        )
+
+    if name.lower().startswith("kellan"):
+        return (
+            f"Hello. I'm {name}. I have little time, but ask what you need to know."
+        )
+
+    return (
+        f"Hello. I'm {name}. What would you like to know?"
+    )
 
 def _relevant_facts(
     question: str,
@@ -360,6 +387,15 @@ class InterviewAgent:
                 used_facts=slice_facts[:2],
             )
 
+                if _is_greeting(question):
+            return InterviewTurn(
+                character_id=character.name,
+                checkpoint_id=checkpoint.id,
+                question=question,
+                answer=_greeting_for(character),
+                refused_future=False,
+                used_facts=[],
+            )
         conversation_history = history or []
 
         # Find facts that were already mentioned earlier
