@@ -245,15 +245,19 @@ def interview(body: InterviewBody) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     question = _effective_question(body.message, body.history)
-    result = orchestrator.run(
-        OrchestratorRequest(
-            capability="interview",
-            graph=graph,
-            character_id=body.character_id,
-            checkpoint_id=body.checkpoint_id,
-            question=question,
-        )
-    )
+     result = orchestrator.run(
+       OrchestratorRequest(
+         capability="interview",
+         graph=graph,
+         character_id=body.character_id,
+         checkpoint_id=body.checkpoint_id,
+         question=question,
+         history=[
+            {"role": item.role, "content": item.content}
+            for item in body.history
+        ],
+     )
+  )
     turn = result.interview
     return {
         "character_id": body.character_id,
