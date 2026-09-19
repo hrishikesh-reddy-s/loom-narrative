@@ -394,7 +394,7 @@ class InterviewAgent:
 
         # Prevent the character from talking about events
         # that have not happened at the selected checkpoint.
-        if question_asks_about_future(
+                if question_asks_about_future(
             question,
             future,
             known,
@@ -411,7 +411,7 @@ class InterviewAgent:
                 used_facts=slice_facts[:2],
             )
 
-                if _is_greeting(question):
+        if _is_greeting(question):
             return InterviewTurn(
                 character_id=character.name,
                 checkpoint_id=checkpoint.id,
@@ -420,6 +420,34 @@ class InterviewAgent:
                 refused_future=False,
                 used_facts=[],
             )
+
+        conversation_history = history or []
+
+        # Find facts that were already mentioned earlier
+        # in this conversation.
+        used_before = _previously_used_facts(
+            character,
+            known,
+            conversation_history,
+        )
+
+        # Prefer facts relevant to the new question while
+        # avoiding facts already used in previous answers.
+        used = _relevant_facts(
+            question,
+            known,
+            excluded_facts=used_before,
+        )
+        if _is_greeting(question):
+            return InterviewTurn(
+                character_id=character.name,
+                checkpoint_id=checkpoint.id,
+                question=question,
+                answer=_greeting_for(character),
+                refused_future=False,
+                used_facts=[],
+            )
+
         conversation_history = history or []
 
         # Find facts that were already mentioned earlier
