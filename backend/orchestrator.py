@@ -37,6 +37,8 @@ class OrchestratorRequest(BaseModel):
     character_id: str | None = None
     checkpoint_id: str | None = None
     question: str | None = None
+    history: list[dict[str, str]] = Field(default_factory=list)
+  
     injected_draft: str | None = Field(
         default=None,
         description="Optional pre-generated prose used to exercise the auditor retry path.",
@@ -151,12 +153,13 @@ class Orchestrator:
             if not request.question:
                 raise ValueError("Interview requires a question.")
             interview_turn = self.interview.respond(
-                character=context.character,
-                checkpoint=context.checkpoint,
-                knowledge_slice=context.active_knowledge,
-                question=request.question,
-                context=context,
-            )
+               character=context.character,
+               checkpoint=context.checkpoint,
+               knowledge_slice=context.active_knowledge,
+               question=request.question,
+               context=context,
+               history=request.history,
+               )
             draft = interview_turn.answer
         elif request.capability == "perspective":
             perspective_draft = self.perspective.rewrite(context)
@@ -199,12 +202,13 @@ class Orchestrator:
                 return self.auditor.repair(draft, report, context)
             if request.capability == "interview" and request.question:
                 repaired_turn = self.interview.respond(
-                    character=context.character,
-                    checkpoint=context.checkpoint,
-                    knowledge_slice=context.active_knowledge,
-                    question=request.question,
-                    context=context,
-                )
+                         character=context.character,
+                         checkpoint=context.checkpoint,
+                         knowledge_slice=context.active_knowledge,
+                         question=request.question,
+                         context=context,
+                         history=request.history,
+                      ) 
                 return repaired_turn.answer
             if request.capability == "perspective":
                 return self.perspective.rewrite(context).prose
