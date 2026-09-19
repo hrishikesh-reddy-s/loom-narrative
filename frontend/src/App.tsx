@@ -153,6 +153,41 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
+      const response = await fetch("https://loom-narrative-engine.onrender.com/api/sample");
+      if (!response.ok) throw new Error(await readError(response));
+      applyStory(await response.json());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load sample");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function ingestFile(file: File) {
+    setBusy(true);
+    setError(null);
+
+    try {
+      const body = new FormData();
+      body.append("file", file);
+
+      const response = await fetch(
+        "https://loom-narrative-engine.onrender.com/api/ingest",
+        { method: "POST", body }
+      );
+
+      if (!response.ok) throw new Error(await readError(response));
+
+      applyStory(await response.json());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ingest failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function loadSample() {
+    setBusy(true);
+    setError(null);
+    try {
       const response = await fetch("/api/sample");
       if (!response.ok) throw new Error(await readError(response));
       applyStory(await response.json());
@@ -190,28 +225,33 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
-      // Build history from the pre-mutation snapshot, then append the new
-      // message once. Map "character" → "assistant" for the wire format.
-      const history = [
-        ...currentChat.map((item) => ({
-          role: (item.role === "character" ? "assistant" : item.role) as
-            | "user"
-            | "assistant",
-          content: item.content,
-        })),
-        { role: "user" as const, content: message },
-      ];
-      const response = await fetch("/api/interview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          character_id: characterId,
-          checkpoint_id: checkpointId,
-          message,
-          history,
-        }),
-      });
-      if (!response.ok) throw new Error(await readError(response));
+      const history = [...chat, { role: "user" as const, content: message }].map((item) => ({
+        role: item.role,
+        content: item.content,
+      }));
+      const response = await fetch("https://loom-narrative-engine.onrender.com/api/interview", {
+        // Build history from the pre-mutation snapshot, then append the new
+        // message once. Map "character" → "assistant" for the wire format.
+        const history = [
+          ...currentChat.map((item) => ({
+            role: (item.role === "character" ? "assistant" : item.role) as
+              | "user"
+              | "assistant",
+            content: item.content,
+          })),
+          { role: "user" as const, content: message },
+        ];
+        const response = await fetch("/api/interview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            character_id: characterId,
+            checkpoint_id: checkpointId,
+            message,
+            history,
+          }),
+        });
+        if(!response.ok) throw new Error(await readError(response));
       const data = await response.json();
       setChat((prev) => [
         ...prev,
@@ -229,7 +269,7 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
-      const response = await fetch("/api/perspective", {
+      const response = await fetch("https://loom-narrative-engine.onrender.com/api/perspective", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -387,40 +427,40 @@ export default function App() {
                   </p>
                 </section>
               ) : (
-              <section className="rounded-3xl border border-line bg-panel p-4">
-                <div className="flex items-baseline justify-between gap-3">
-                  <label className="text-xs tracking-[0.2em] text-mute uppercase">Timeline checkpoint</label>
-                  <span className="font-mono text-xs text-brass">{checkpoint?.id}</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(0, checkpoints.length - 1)}
-                  value={checkpointIndex}
-                  onChange={(event) => selectCheckpoint(Number(event.target.value))}
-                  className="mt-4 w-full accent-[#c4a574]"
-                />
-                <div className="mt-2 flex justify-between">
-                  <button
-                    type="button"
-                    className="text-xs text-brass hover:underline"
-                    onClick={() => selectCheckpoint(Math.max(0, checkpointIndex - 1))}
-                  >
-                    ← Earlier
-                  </button>
-                  <button
-                    type="button"
-                    className="text-xs text-brass hover:underline"
-                    onClick={() => selectCheckpoint(Math.min(checkpoints.length - 1, checkpointIndex + 1))}
-                  >
-                    Later →
-                  </button>
-                </div>
-                <p className="mt-3 text-sm leading-relaxed text-mist/90">{checkpoint?.event}</p>
-                {checkpoint?.time_marker ? (
-                  <p className="mt-2 text-xs text-sea">{checkpoint.time_marker.replaceAll("_", " ")}</p>
-                ) : null}
-              </section>
+                <section className="rounded-3xl border border-line bg-panel p-4">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <label className="text-xs tracking-[0.2em] text-mute uppercase">Timeline checkpoint</label>
+                    <span className="font-mono text-xs text-brass">{checkpoint?.id}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={Math.max(0, checkpoints.length - 1)}
+                    value={checkpointIndex}
+                    onChange={(event) => selectCheckpoint(Number(event.target.value))}
+                    className="mt-4 w-full accent-[#c4a574]"
+                  />
+                  <div className="mt-2 flex justify-between">
+                    <button
+                      type="button"
+                      className="text-xs text-brass hover:underline"
+                      onClick={() => selectCheckpoint(Math.max(0, checkpointIndex - 1))}
+                    >
+                      ← Earlier
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs text-brass hover:underline"
+                      onClick={() => selectCheckpoint(Math.min(checkpoints.length - 1, checkpointIndex + 1))}
+                    >
+                      Later →
+                    </button>
+                  </div>
+                  <p className="mt-3 text-sm leading-relaxed text-mist/90">{checkpoint?.event}</p>
+                  {checkpoint?.time_marker ? (
+                    <p className="mt-2 text-xs text-sea">{checkpoint.time_marker.replaceAll("_", " ")}</p>
+                  ) : null}
+                </section>
               )}
 
               <section className="rounded-3xl border border-line bg-panel">
@@ -477,7 +517,7 @@ export default function App() {
                     type="button"
                     onClick={() => setTab(id)}
                     className={`rounded-full px-4 py-2 text-sm ${tab === id ? "bg-brass text-ink" : "text-mute hover:text-mist"
-                    }`}
+                      }`}
                   >
                     {label}
                   </button>
@@ -496,11 +536,10 @@ export default function App() {
                     {chat.map((item, index) => (
                       <div
                         key={`${item.role}-${index}`}
-                        className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                          item.role === "user"
+                        className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${item.role === "user"
                             ? "ml-auto bg-brass/15 text-mist"
                             : "bg-panel-2 text-mist"
-                        }`}
+                          }`}
                       >
                         <p className="mb-1 text-[10px] tracking-widest text-brass uppercase">
                           {item.role === "user" ? "You" : character?.name}
@@ -556,11 +595,10 @@ export default function App() {
                             key={value}
                             type="button"
                             onClick={() => setSpinoffType(value)}
-                            className={`flex-1 rounded-2xl border px-3 py-2 text-left text-sm transition-colors ${
-                              spinoffType === value
+                            className={`flex-1 rounded-2xl border px-3 py-2 text-left text-sm transition-colors ${spinoffType === value
                                 ? "border-brass bg-brass/15 text-mist"
                                 : "border-line text-mute hover:border-brass/50"
-                            }`}
+                              }`}
                           >
                             <span className="font-medium">{label}</span>
                             <span className="mt-0.5 block text-[11px] text-mute">{desc}</span>
@@ -584,11 +622,10 @@ export default function App() {
                             key={value}
                             type="button"
                             onClick={() => setSpinoffLength(value)}
-                            className={`rounded-full border px-4 py-2 text-sm transition-colors ${
-                              spinoffLength === value
+                            className={`rounded-full border px-4 py-2 text-sm transition-colors ${spinoffLength === value
                                 ? "border-brass bg-brass/15 text-mist"
                                 : "border-line text-mute hover:border-brass/50"
-                            }`}
+                              }`}
                           >
                             {label} <span className="text-[11px] text-mute">({hint})</span>
                           </button>
@@ -686,11 +723,10 @@ export default function App() {
 
                       {/* Audit badge and trace */}
                       <div className="flex flex-wrap items-center gap-3">
-                        <span className={`rounded-full px-3 py-1 text-xs font-medium ${
-                          spinoffResult.audit.toLowerCase().includes("passes") || spinoffResult.audit.toLowerCase().includes("holds")
+                        <span className={`rounded-full px-3 py-1 text-xs font-medium ${spinoffResult.audit.toLowerCase().includes("passes") || spinoffResult.audit.toLowerCase().includes("holds")
                             ? "bg-green-900/40 text-green-300"
                             : "bg-yellow-900/40 text-yellow-300"
-                        }`}>
+                          }`}>
                           {spinoffResult.audit.toLowerCase().includes("passes") || spinoffResult.audit.toLowerCase().includes("holds")
                             ? "✓ Audit passed" : "⚠ Accepted with warnings"}
                         </span>

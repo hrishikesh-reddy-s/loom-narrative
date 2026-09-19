@@ -16,10 +16,13 @@ from narrative_context import build_context, character_slug
 from orchestrator import Orchestrator, OrchestratorRequest
 from spinoff_agent import CanonAnchor, SpinoffDraft, SpinoffType, StoryLength
 
+
 BACKEND_DIR = Path(__file__).resolve().parent
 SAMPLE_STORY_PATH = BACKEND_DIR / "fixtures" / "short_story.txt"
 
+
 app = FastAPI(title="Loom", version="0.2.0")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -27,6 +30,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 orchestrator = Orchestrator()
 
@@ -38,7 +42,13 @@ class SessionStore:
         self.graph: LoreGraph | None = None
         self.title: str | None = None
 
-    def set(self, *, raw_text: str, graph: LoreGraph, title: str | None) -> None:
+    def set(
+        self,
+        *,
+        raw_text: str,
+        graph: LoreGraph,
+        title: str | None,
+    ) -> None:
         with self._lock:
             self.raw_text = raw_text
             self.graph = graph
@@ -88,10 +98,19 @@ class PerspectiveBody(BaseModel):
 class SpinoffBody(BaseModel):
     character_id: str
     spinoff_type: SpinoffType
-    tone: str = Field(default="", description="Tonal direction; blank = match the source.")
+    tone: str = Field(
+        default="",
+        description="Tonal direction; blank = match the source.",
+    )
     length: StoryLength = "medium"
-    focus_prompt: str = Field(default="", description="Optional creative prompt.")
-    language: str = Field(default="", description="Target language; blank = source language.")
+    focus_prompt: str = Field(
+        default="",
+        description="Optional creative prompt.",
+    )
+    language: str = Field(
+        default="",
+        description="Target language; blank = source language.",
+    )
 
 
 class CanonAnchorOut(BaseModel):
@@ -137,32 +156,67 @@ def _checkpoint_out(checkpoint: TimelineCheckpoint) -> CheckpointOut:
     )
 
 
-def _story_state(raw_text: str, graph: LoreGraph) -> StoryState:
+def _story_state(
+    raw_text: str,
+    graph: LoreGraph,
+) -> StoryState:
     return StoryState(
         source_title=graph.source_title,
         story=raw_text,
-        characters=[_character_out(item) for item in graph.characters],
-        checkpoints=[_checkpoint_out(item) for item in graph.timeline],
+        characters=[
+            _character_out(item)
+            for item in graph.characters
+        ],
+        checkpoints=[
+            _checkpoint_out(item)
+            for item in graph.timeline
+        ],
         knowledge=graph.knowledge,
     )
 
 
 def _require_graph() -> tuple[str, LoreGraph]:
     raw_text, graph = store.snapshot()
+
     if graph is None or raw_text is None:
         raise HTTPException(
             status_code=409,
             detail="No story is loaded. Ingest text or load the sample first.",
         )
+
     return raw_text, graph
 
 
-def _effective_question(message: str, history: list[ChatMessage]) -> str:
+def _effective_question(
+    message: str,
+    history: list[ChatMessage],
+) -> str:
     stripped = message.strip()
+
     if not stripped:
+        raise HTTPException(
+            status_code=400,
+            detail="message is required",
+        )
+
+    if len(stripped.split()) > 3:
         raise HTTPException(status_code=400, detail="message is required")
     if not history:
         return stripped
+
+    last_user = next(
+        (
+            item.content
+            for item in reversed(history)
+            if item.role == "user"
+        ),
+        None,
+    )
+
+    if last_user:
+        return f"{last_user}\n{stripped}"
+
+    return stripped
     # Include the last 3 exchanges (up to 6 messages) so the character has
     # genuine conversational memory across turns.
     recent = history[-6:]
@@ -176,60 +230,131 @@ def _effective_question(message: str, history: list[ChatMessage]) -> str:
     return f"{context_block}\nYou ask now: {stripped}"
 
 
-async def _read_ingest_payload(request: Request) -> tuple[str, str]:
+async def _read_ingest_payload(
+    request: Request,
+) -> tuple[str, str]:
     content_type = request.headers.get("content-type", "")
+
     if content_type.startswith("multipart/form-data"):
         form = await request.form()
         upload = form.get("file")
+
         if isinstance(upload, StarletteUploadFile):
             payload = await upload.read()
+
             try:
                 text = payload.decode("utf-8")
             except UnicodeDecodeError as exc:
-                raise HTTPException(status_code=400, detail="Uploaded file must be UTF-8 text.") from exc
+                raise HTTPException(
+                    status_code=400,
+                    detail="Uploaded file must be UTF-8 text.",
+                ) from exc
+
             title = upload.filename or "upload.txt"
+
             if not text.strip():
-                raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+                raise HTTPException(
+                    status_code=400,
+                    detail="Uploaded file is empty.",
+                )
+
             return text, title
+
         pasted = form.get("text")
+
         if isinstance(pasted, str) and pasted.strip():
             return pasted, "paste.txt"
-        raise HTTPException(status_code=400, detail="Provide a .txt file or a text field.")
+
+        raise HTTPException(
+            status_code=400,
+            detail="Provide a .txt file or a text field.",
+        )
 
     if "application/json" in content_type:
         data: dict[str, Any] = await request.json()
-        text = str(data.get("text") or data.get("raw_text") or "")
-        title = str(data.get("title") or "paste.txt")
+
+        text = str(
+            data.get("text")
+            or data.get("raw_text")
+            or ""
+        )
+
+        title = str(
+            data.get("title")
+            or "paste.txt"
+        )
+
         if not text.strip():
-            raise HTTPException(status_code=400, detail="JSON body must include non-empty 'text'.")
+            raise HTTPException(
+                status_code=400,
+                detail="JSON body must include non-empty 'text'.",
+            )
+
         return text, title
 
-    body = (await request.body()).decode("utf-8")
+    body = (
+        await request.body()
+    ).decode("utf-8")
+
     if body.strip():
         return body, "raw.txt"
-    raise HTTPException(status_code=400, detail="Send raw text, JSON {text}, or a file upload.")
+
+    raise HTTPException(
+        status_code=400,
+        detail="Send raw text, JSON {text}, or a file upload.",
+    )
 
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "app": "Loom"}
+    return {
+        "status": "ok",
+        "app": "Loom",
+    }
 
 
-@app.post("/api/ingest", response_model=StoryState)
+@app.post(
+    "/api/ingest",
+    response_model=StoryState,
+)
 async def ingest(request: Request) -> StoryState:
     text, title = await _read_ingest_payload(request)
+
     result = orchestrator.run(
-        OrchestratorRequest(capability="ingest", raw_text=text, source_title=title)
+        OrchestratorRequest(
+            capability="ingest",
+            raw_text=text,
+            source_title=title,
+        )
     )
+
     if result.graph is None:
-        raise HTTPException(status_code=500, detail="Ingestion produced no lore graph.")
-    store.set(raw_text=text, graph=result.graph, title=title)
-    return _story_state(text, result.graph)
+        raise HTTPException(
+            status_code=500,
+            detail="Ingestion produced no lore graph.",
+        )
+
+    store.set(
+        raw_text=text,
+        graph=result.graph,
+        title=title,
+    )
+
+    return _story_state(
+        text,
+        result.graph,
+    )
 
 
-@app.get("/api/sample", response_model=StoryState)
+@app.get(
+    "/api/sample",
+    response_model=StoryState,
+)
 def sample() -> StoryState:
-    text = SAMPLE_STORY_PATH.read_text(encoding="utf-8")
+    text = SAMPLE_STORY_PATH.read_text(
+        encoding="utf-8"
+    )
+
     result = orchestrator.run(
         OrchestratorRequest(
             capability="ingest",
@@ -237,21 +362,48 @@ def sample() -> StoryState:
             source_title=SAMPLE_STORY_PATH.name,
         )
     )
+
     if result.graph is None:
-        raise HTTPException(status_code=500, detail="Sample ingestion failed.")
-    store.set(raw_text=text, graph=result.graph, title=SAMPLE_STORY_PATH.name)
-    return _story_state(text, result.graph)
+        raise HTTPException(
+            status_code=500,
+            detail="Sample ingestion failed.",
+        )
+
+    store.set(
+        raw_text=text,
+        graph=result.graph,
+        title=SAMPLE_STORY_PATH.name,
+    )
+
+    return _story_state(
+        text,
+        result.graph,
+    )
 
 
 @app.post("/api/interview")
-def interview(body: InterviewBody) -> dict[str, Any]:
+def interview(
+    body: InterviewBody,
+) -> dict[str, Any]:
     _, graph = _require_graph()
-    try:
-        build_context(graph, body.character_id, body.checkpoint_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    question = _effective_question(body.message, body.history)
+    try:
+        build_context(
+            graph,
+            body.character_id,
+            body.checkpoint_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        ) from exc
+
+    question = _effective_question(
+        body.message,
+        body.history,
+    )
+
     result = orchestrator.run(
         OrchestratorRequest(
             capability="interview",
@@ -259,16 +411,33 @@ def interview(body: InterviewBody) -> dict[str, Any]:
             character_id=body.character_id,
             checkpoint_id=body.checkpoint_id,
             question=question,
+            history=[
+                {
+                    "role": item.role,
+                    "content": item.content,
+                }
+                for item in body.history
+            ],
         )
     )
+
     turn = result.interview
+
     return {
         "character_id": body.character_id,
         "checkpoint_id": body.checkpoint_id,
         "message": body.message,
         "response": result.text,
-        "refused_future": bool(turn.refused_future) if turn else False,
-        "used_facts": turn.used_facts if turn else [],
+        "refused_future": (
+            bool(turn.refused_future)
+            if turn
+            else False
+        ),
+        "used_facts": (
+            turn.used_facts
+            if turn
+            else []
+        ),
         "passed": result.passed,
         "retries": result.retries,
         "critique": result.critique,
@@ -277,12 +446,22 @@ def interview(body: InterviewBody) -> dict[str, Any]:
 
 
 @app.post("/api/perspective")
-def perspective(body: PerspectiveBody) -> dict[str, Any]:
+def perspective(
+    body: PerspectiveBody,
+) -> dict[str, Any]:
     _, graph = _require_graph()
+
     try:
-        build_context(graph, body.character_id, body.checkpoint_id)
+        build_context(
+            graph,
+            body.character_id,
+            body.checkpoint_id,
+        )
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        ) from exc
 
     result = orchestrator.run(
         OrchestratorRequest(
@@ -292,13 +471,23 @@ def perspective(body: PerspectiveBody) -> dict[str, Any]:
             checkpoint_id=body.checkpoint_id,
         )
     )
+
     draft = result.perspective
+
     return {
         "character_id": body.character_id,
         "checkpoint_id": body.checkpoint_id,
         "prose": result.text,
-        "interior": draft.interior if draft else None,
-        "sensory_focus": draft.sensory_focus if draft else [],
+        "interior": (
+            draft.interior
+            if draft
+            else None
+        ),
+        "sensory_focus": (
+            draft.sensory_focus
+            if draft
+            else []
+        ),
         "passed": result.passed,
         "retries": result.retries,
         "critique": result.critique,
@@ -306,14 +495,28 @@ def perspective(body: PerspectiveBody) -> dict[str, Any]:
     }
 
 
-@app.post("/api/projects/{project_id}/spinoff", response_model=SpinoffResponse)
-def spinoff(project_id: str, body: SpinoffBody) -> SpinoffResponse:
+@app.post(
+    "/api/projects/{project_id}/spinoff",
+    response_model=SpinoffResponse,
+)
+def spinoff(
+    project_id: str,
+    body: SpinoffBody,
+) -> SpinoffResponse:
     _, graph = _require_graph()
+
     try:
         from narrative_context import resolve_character as _rc
-        _rc(graph, body.character_id)
+
+        _rc(
+            graph,
+            body.character_id,
+        )
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        ) from exc
 
     try:
         result = orchestrator.run(
@@ -329,11 +532,19 @@ def spinoff(project_id: str, body: SpinoffBody) -> SpinoffResponse:
             )
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
 
     draft = result.spinoff
+
     return SpinoffResponse(
-        title=draft.title if draft else "Untitled Spin-off",
+        title=(
+            draft.title
+            if draft
+            else "Untitled Spin-off"
+        ),
         story=result.text,
         canon_anchors=[
             CanonAnchorOut(
@@ -341,9 +552,17 @@ def spinoff(project_id: str, body: SpinoffBody) -> SpinoffResponse:
                 event_title=a.event_title,
                 how_used=a.how_used,
             )
-            for a in (draft.canon_anchors if draft else [])
+            for a in (
+                draft.canon_anchors
+                if draft
+                else []
+            )
         ],
-        invented_elements=draft.invented_elements if draft else [],
+        invented_elements=(
+            draft.invented_elements
+            if draft
+            else []
+        ),
         audit=result.critique,
         trace=result.trace,
     )
