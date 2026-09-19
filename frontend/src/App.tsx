@@ -1,7 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
-
-
 type Character = {
   id: string;
   name: string;
@@ -71,21 +69,37 @@ function knownHorizon(state: StoryState, checkpointId: string) {
   const remembered = state.knowledge.filter(
     (item) => orderOf(state.checkpoints, item.valid_from) <= target,
   );
+
   const active = remembered.filter((item) => {
-    const until = item.valid_until ? orderOf(state.checkpoints, item.valid_until) : null;
+    const until = item.valid_until
+      ? orderOf(state.checkpoints, item.valid_until)
+      : null;
+
     return until === null || until > target;
   });
+
   const sealed = state.knowledge.filter(
     (item) => orderOf(state.checkpoints, item.valid_from) > target,
   );
+
   const facts = remembered.flatMap((item) => item.known_facts);
-  return { remembered, active, sealed, facts: [...new Set(facts)] };
+
+  return {
+    remembered,
+    active,
+    sealed,
+    facts: [...new Set(facts)],
+  };
 }
 
 async function readError(response: Response): Promise<string> {
   try {
     const data = await response.json();
-    if (typeof data.detail === "string") return data.detail;
+
+    if (typeof data.detail === "string") {
+      return data.detail;
+    }
+
     return JSON.stringify(data.detail ?? data);
   } catch {
     return response.statusText;
@@ -95,6 +109,7 @@ async function readError(response: Response): Promise<string> {
 export default function App() {
   const fileRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
   const [state, setState] = useState<StoryState | null>(null);
   const [characterId, setCharacterId] = useState("");
   const [checkpointId, setCheckpointId] = useState("");
@@ -104,6 +119,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [chat, setChat] = useState<ChatItem[]>([]);
+
   const [scene, setScene] = useState<{
     prose: string;
     interior: string | null;
@@ -111,37 +127,64 @@ export default function App() {
   } | null>(null);
 
   // Spin-off state
-  const [spinoffType, setSpinoffType] = useState<SpinoffType>("parallel");
+  const [spinoffType, setSpinoffType] =
+    useState<SpinoffType>("parallel");
+
   const [spinoffTone, setSpinoffTone] = useState("");
-  const [spinoffLength, setSpinoffLength] = useState<StoryLength>("medium");
+
+  const [spinoffLength, setSpinoffLength] =
+    useState<StoryLength>("medium");
+
   const [spinoffFocus, setSpinoffFocus] = useState("");
-  const [spinoffResult, setSpinoffResult] = useState<SpinoffResult | null>(null);
+
+  const [spinoffResult, setSpinoffResult] =
+    useState<SpinoffResult | null>(null);
+
   const [anchorsOpen, setAnchorsOpen] = useState(false);
   const [inventedOpen, setInventedOpen] = useState(false);
 
-  const character = state?.characters.find((item) => item.id === characterId);
+  const character = state?.characters.find(
+    (item) => item.id === characterId,
+  );
+
   const checkpoints = state?.checkpoints ?? [];
+
   const checkpointIndex = Math.max(
     0,
     checkpoints.findIndex((item) => item.id === checkpointId),
   );
+
   const checkpoint = checkpoints[checkpointIndex];
+
   const horizon = useMemo(() => {
     if (!state || !checkpointId) return null;
+
     return knownHorizon(state, checkpointId);
   }, [state, checkpointId]);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    chatEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+    });
   }, [chat, busy]);
 
   function applyStory(next: StoryState) {
     setState(next);
-    const mara = next.characters.find((item) => item.id === "mara-vale") ?? next.characters[0];
+
+    const mara =
+      next.characters.find(
+        (item) => item.id === "mara-vale",
+      ) ?? next.characters[0];
+
     const mid =
-      next.checkpoints.find((item) => item.id === "cp_05") ??
-      next.checkpoints[Math.floor(next.checkpoints.length / 2)] ??
+      next.checkpoints.find(
+        (item) => item.id === "cp_05",
+      ) ??
+      next.checkpoints[
+      Math.floor(next.checkpoints.length / 2)
+      ] ??
       next.checkpoints[0];
+
     setCharacterId(mara?.id ?? "");
     setCheckpointId(mid?.id ?? "");
     setChat([]);
@@ -152,16 +195,28 @@ export default function App() {
   async function loadSample() {
     setBusy(true);
     setError(null);
+
     try {
-      const response = await fetch("https://loom-narrative-engine.onrender.com/api/sample");
-      if (!response.ok) throw new Error(await readError(response));
+      const response = await fetch(
+        "https://loom-narrative-engine.onrender.com/api/sample",
+      );
+
+      if (!response.ok) {
+        throw new Error(await readError(response));
+      }
+
       applyStory(await response.json());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load sample");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load sample",
+      );
     } finally {
       setBusy(false);
     }
   }
+
   async function ingestFile(file: File) {
     setBusy(true);
     setError(null);
@@ -172,43 +227,23 @@ export default function App() {
 
       const response = await fetch(
         "https://loom-narrative-engine.onrender.com/api/ingest",
-        { method: "POST", body }
+        {
+          method: "POST",
+          body,
+        },
       );
 
-      if (!response.ok) throw new Error(await readError(response));
+      if (!response.ok) {
+        throw new Error(await readError(response));
+      }
 
       applyStory(await response.json());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ingest failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function loadSample() {
-    setBusy(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/sample");
-      if (!response.ok) throw new Error(await readError(response));
-      applyStory(await response.json());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load sample");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function ingestFile(file: File) {
-    setBusy(true);
-    setError(null);
-    try {
-      const body = new FormData();
-      body.append("file", file);
-      const response = await fetch("/api/ingest", { method: "POST", body });
-      if (!response.ok) throw new Error(await readError(response));
-      applyStory(await response.json());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Ingest failed");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Ingest failed",
+      );
     } finally {
       setBusy(false);
     }
@@ -216,76 +251,129 @@ export default function App() {
 
   async function sendInterview(event?: FormEvent) {
     event?.preventDefault();
-    if (!draft.trim() || !state) return;
+
+    if (!draft.trim() || !state) {
+      return;
+    }
+
     const message = draft.trim();
-    // Snapshot chat BEFORE any state mutation to avoid reading a stale closure.
+
+    // Snapshot chat BEFORE any state mutation.
     const currentChat = chat;
+
     setDraft("");
-    setChat((prev) => [...prev, { role: "user", content: message }]);
+
+    setChat((prev) => [
+      ...prev,
+      {
+        role: "user",
+        content: message,
+      },
+    ]);
+
     setBusy(true);
     setError(null);
+
     try {
-      const history = [...chat, { role: "user" as const, content: message }].map((item) => ({
-        role: item.role,
-        content: item.content,
-      }));
-      const response = await fetch("https://loom-narrative-engine.onrender.com/api/interview", {
-        // Build history from the pre-mutation snapshot, then append the new
-        // message once. Map "character" → "assistant" for the wire format.
-        const history = [
-          ...currentChat.map((item) => ({
-            role: (item.role === "character" ? "assistant" : item.role) as
-              | "user"
-              | "assistant",
-            content: item.content,
-          })),
-          { role: "user" as const, content: message },
-        ];
-        const response = await fetch("/api/interview", {
+      // Build history before calling fetch.
+      // "character" is mapped to "assistant"
+      // for the backend wire format.
+      const history = [
+        ...currentChat.map((item) => ({
+          role: (
+            item.role === "character"
+              ? "assistant"
+              : item.role
+          ) as "user" | "assistant",
+          content: item.content,
+        })),
+        {
+          role: "user" as const,
+          content: message,
+        },
+      ];
+
+      const response = await fetch(
+        "https://loom-narrative-engine.onrender.com/api/interview",
+        {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify({
             character_id: characterId,
             checkpoint_id: checkpointId,
             message,
             history,
           }),
-        });
-        if(!response.ok) throw new Error(await readError(response));
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(await readError(response));
+      }
+
       const data = await response.json();
+
       setChat((prev) => [
         ...prev,
-        { role: "character", content: data.response, refused: data.refused_future },
+        {
+          role: "character",
+          content: data.response,
+          refused: data.refused_future,
+        },
       ]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Interview failed");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Interview failed",
+      );
     } finally {
       setBusy(false);
     }
   }
 
   async function runPerspective() {
-    if (!state) return;
+    if (!state) {
+      return;
+    }
+
     setBusy(true);
     setError(null);
+
     try {
-      const response = await fetch("https://loom-narrative-engine.onrender.com/api/perspective", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          character_id: characterId,
-          checkpoint_id: checkpointId,
-        }),
-      });
-      if (!response.ok) throw new Error(await readError(response));
+      const response = await fetch(
+        "https://loom-narrative-engine.onrender.com/api/perspective",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            character_id: characterId,
+            checkpoint_id: checkpointId,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(await readError(response));
+      }
+
       const data = await response.json();
+
       setScene({
         prose: data.prose,
         interior: data.interior,
         sensory_focus: data.sensory_focus ?? [],
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Perspective failed");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Perspective failed",
+      );
     } finally {
       setBusy(false);
     }
@@ -293,69 +381,124 @@ export default function App() {
 
   function selectCheckpoint(index: number) {
     const next = checkpoints[index];
-    if (!next) return;
+
+    if (!next) {
+      return;
+    }
+
     setCheckpointId(next.id);
     setChat([]);
     setScene(null);
   }
 
   async function runSpinoff() {
-    if (!state) return;
+    if (!state) {
+      return;
+    }
+
     setBusy(true);
     setError(null);
     setSpinoffResult(null);
+
     try {
-      const response = await fetch("/api/projects/default/spinoff", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          character_id: characterId,
-          spinoff_type: spinoffType,
-          tone: spinoffTone,
-          length: spinoffLength,
-          focus_prompt: spinoffFocus,
-        }),
-      });
-      if (!response.ok) throw new Error(await readError(response));
+      const response = await fetch(
+        "/api/projects/default/spinoff",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            character_id: characterId,
+            spinoff_type: spinoffType,
+            tone: spinoffTone,
+            length: spinoffLength,
+            focus_prompt: spinoffFocus,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(await readError(response));
+      }
+
       const data: SpinoffResult = await response.json();
+
       setSpinoffResult(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Spin-off failed");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Spin-off failed",
+      );
     } finally {
       setBusy(false);
     }
   }
 
   function copySpinoff() {
-    if (!spinoffResult) return;
-    const text = `${spinoffResult.title}\n\n${spinoffResult.story}`;
+    if (!spinoffResult) {
+      return;
+    }
+
+    const text =
+      `${spinoffResult.title}\n\n${spinoffResult.story}`;
+
     void navigator.clipboard.writeText(text);
   }
 
   function downloadSpinoff() {
-    if (!spinoffResult) return;
-    const text = `${spinoffResult.title}\n\n${spinoffResult.story}`;
-    const blob = new Blob([text], { type: "text/plain" });
+    if (!spinoffResult) {
+      return;
+    }
+
+    const text =
+      `${spinoffResult.title}\n\n${spinoffResult.story}`;
+
+    const blob = new Blob(
+      [text],
+      {
+        type: "text/plain",
+      },
+    );
+
     const url = URL.createObjectURL(blob);
+
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${spinoffResult.title.replace(/[^a-zA-Z0-9]+/g, "_")}.txt`;
+
+    a.download =
+      `${spinoffResult.title.replace(
+        /[^a-zA-Z0-9]+/g,
+        "_",
+      )}.txt`;
+
     a.click();
+
     URL.revokeObjectURL(url);
   }
 
   return (
     <div className="min-h-screen bg-ink text-mist">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(196,165,116,0.08),_transparent_55%)]" />
+
       <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-6 md:px-8">
         <header className="mb-6 flex flex-col gap-4 rounded-3xl border border-line bg-panel/90 p-5 shadow-[0_20px_80px_rgba(0,0,0,0.35)] md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="text-xs tracking-[0.35em] text-brass uppercase">Multi-agent narrative engine</p>
-            <h1 className="font-display text-4xl text-brass md:text-5xl">Loom</h1>
+            <p className="text-xs tracking-[0.35em] text-brass uppercase">
+              Multi-agent narrative engine
+            </p>
+
+            <h1 className="font-display text-4xl text-brass md:text-5xl">
+              Loom
+            </h1>
+
             <p className="mt-1 max-w-xl text-sm text-mute">
-              Interview characters inside a sealed knowledge horizon. They cannot know what has not yet happened.
+              Interview characters inside a sealed knowledge horizon.
+              They cannot know what has not yet happened.
             </p>
           </div>
+
           <div className="flex flex-wrap items-center gap-3">
             <input
               ref={fileRef}
@@ -364,10 +507,15 @@ export default function App() {
               className="hidden"
               onChange={(event) => {
                 const file = event.target.files?.[0];
-                if (file) void ingestFile(file);
+
+                if (file) {
+                  void ingestFile(file);
+                }
+
                 event.target.value = "";
               }}
             />
+
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
@@ -375,6 +523,7 @@ export default function App() {
             >
               Upload story (.txt)
             </button>
+
             <button
               type="button"
               onClick={() => void loadSample()}
@@ -392,12 +541,19 @@ export default function App() {
         ) : null}
 
         {!state ? (
-          <EmptyState busy={busy} onSample={() => void loadSample()} onUpload={() => fileRef.current?.click()} />
+          <EmptyState
+            busy={busy}
+            onSample={() => void loadSample()}
+            onUpload={() => fileRef.current?.click()}
+          />
         ) : (
           <div className="grid flex-1 gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
             <aside className="space-y-4">
               <section className="rounded-3xl border border-line bg-panel p-4">
-                <label className="text-xs tracking-[0.2em] text-mute uppercase">Character</label>
+                <label className="text-xs tracking-[0.2em] text-mute uppercase">
+                  Character
+                </label>
+
                 <select
                   value={characterId}
                   onChange={(event) => {
@@ -414,51 +570,93 @@ export default function App() {
                     </option>
                   ))}
                 </select>
+
                 {character?.traits.length ? (
-                  <p className="mt-3 text-xs text-mute">{character.traits.join(" · ")}</p>
+                  <p className="mt-3 text-xs text-mute">
+                    {character.traits.join(" · ")}
+                  </p>
                 ) : null}
               </section>
 
               {tab === "spinoff" ? (
                 <section className="rounded-3xl border border-line bg-panel p-4">
-                  <p className="text-xs tracking-[0.2em] text-mute uppercase">Timeline checkpoint</p>
+                  <p className="text-xs tracking-[0.2em] text-mute uppercase">
+                    Timeline checkpoint
+                  </p>
+
                   <p className="mt-2 text-sm text-mute italic">
-                    Spin-offs span the full timeline — the checkpoint slider doesn’t apply here.
+                    Spin-offs span the full timeline — the checkpoint
+                    slider doesn’t apply here.
                   </p>
                 </section>
               ) : (
                 <section className="rounded-3xl border border-line bg-panel p-4">
                   <div className="flex items-baseline justify-between gap-3">
-                    <label className="text-xs tracking-[0.2em] text-mute uppercase">Timeline checkpoint</label>
-                    <span className="font-mono text-xs text-brass">{checkpoint?.id}</span>
+                    <label className="text-xs tracking-[0.2em] text-mute uppercase">
+                      Timeline checkpoint
+                    </label>
+
+                    <span className="font-mono text-xs text-brass">
+                      {checkpoint?.id}
+                    </span>
                   </div>
+
                   <input
                     type="range"
                     min={0}
                     max={Math.max(0, checkpoints.length - 1)}
                     value={checkpointIndex}
-                    onChange={(event) => selectCheckpoint(Number(event.target.value))}
+                    onChange={(event) =>
+                      selectCheckpoint(
+                        Number(event.target.value),
+                      )
+                    }
                     className="mt-4 w-full accent-[#c4a574]"
                   />
+
                   <div className="mt-2 flex justify-between">
                     <button
                       type="button"
                       className="text-xs text-brass hover:underline"
-                      onClick={() => selectCheckpoint(Math.max(0, checkpointIndex - 1))}
+                      onClick={() =>
+                        selectCheckpoint(
+                          Math.max(
+                            0,
+                            checkpointIndex - 1,
+                          ),
+                        )
+                      }
                     >
                       ← Earlier
                     </button>
+
                     <button
                       type="button"
                       className="text-xs text-brass hover:underline"
-                      onClick={() => selectCheckpoint(Math.min(checkpoints.length - 1, checkpointIndex + 1))}
+                      onClick={() =>
+                        selectCheckpoint(
+                          Math.min(
+                            checkpoints.length - 1,
+                            checkpointIndex + 1,
+                          ),
+                        )
+                      }
                     >
                       Later →
                     </button>
                   </div>
-                  <p className="mt-3 text-sm leading-relaxed text-mist/90">{checkpoint?.event}</p>
+
+                  <p className="mt-3 text-sm leading-relaxed text-mist/90">
+                    {checkpoint?.event}
+                  </p>
+
                   {checkpoint?.time_marker ? (
-                    <p className="mt-2 text-xs text-sea">{checkpoint.time_marker.replaceAll("_", " ")}</p>
+                    <p className="mt-2 text-xs text-sea">
+                      {checkpoint.time_marker.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    </p>
                   ) : null}
                 </section>
               )}
@@ -467,31 +665,51 @@ export default function App() {
                 <button
                   type="button"
                   className="flex w-full items-center justify-between px-4 py-3 text-left"
-                  onClick={() => setDrawerOpen((open) => !open)}
+                  onClick={() =>
+                    setDrawerOpen((open) => !open)
+                  }
                 >
                   <span className="text-xs tracking-[0.18em] text-mute uppercase">
                     Inspect active knowledge horizon
                   </span>
-                  <span className="text-brass">{drawerOpen ? "–" : "+"}</span>
+
+                  <span className="text-brass">
+                    {drawerOpen ? "–" : "+"}
+                  </span>
                 </button>
+
                 {drawerOpen && horizon ? (
                   <div className="space-y-3 border-t border-line px-4 py-3">
                     <p className="text-xs text-mute">
-                      {character?.name} at {checkpoint?.id} knows {horizon.facts.length} facts.
-                      {horizon.sealed.length ? ` ${horizon.sealed.length} later windows are sealed.` : ""}
+                      {character?.name} at {checkpoint?.id} knows{" "}
+                      {horizon.facts.length} facts.
+                      {horizon.sealed.length
+                        ? ` ${horizon.sealed.length} later windows are sealed.`
+                        : ""}
                     </p>
+
                     <div>
-                      <p className="mb-1 text-[11px] tracking-widest text-brass uppercase">Currently valid</p>
+                      <p className="mb-1 text-[11px] tracking-widest text-brass uppercase">
+                        Currently valid
+                      </p>
+
                       <ul className="space-y-2">
                         {horizon.active.map((item) => (
-                          <li key={item.id} className="rounded-xl bg-panel-2 p-2 text-xs leading-relaxed">
+                          <li
+                            key={item.id}
+                            className="rounded-xl bg-panel-2 p-2 text-xs leading-relaxed"
+                          >
                             {item.summary}
                           </li>
                         ))}
                       </ul>
                     </div>
+
                     <div>
-                      <p className="mb-1 text-[11px] tracking-widest text-brass uppercase">Remembered facts</p>
+                      <p className="mb-1 text-[11px] tracking-widest text-brass uppercase">
+                        Remembered facts
+                      </p>
+
                       <ul className="max-h-48 space-y-1 overflow-y-auto text-xs text-mute">
                         {horizon.facts.map((fact) => (
                           <li key={fact}>· {fact}</li>
@@ -507,16 +725,27 @@ export default function App() {
               <div className="flex gap-2 border-b border-line p-3">
                 {(
                   [
-                    ["interview", "Interactive interview"],
-                    ["perspective", "Perspective shift"],
-                    ["spinoff", "Character spin-off"],
+                    [
+                      "interview",
+                      "Interactive interview",
+                    ],
+                    [
+                      "perspective",
+                      "Perspective shift",
+                    ],
+                    [
+                      "spinoff",
+                      "Character spin-off",
+                    ],
                   ] as const
                 ).map(([id, label]) => (
                   <button
                     key={id}
                     type="button"
                     onClick={() => setTab(id)}
-                    className={`rounded-full px-4 py-2 text-sm ${tab === id ? "bg-brass text-ink" : "text-mute hover:text-mist"
+                    className={`rounded-full px-4 py-2 text-sm ${tab === id
+                        ? "bg-brass text-ink"
+                        : "text-mute hover:text-mist"
                       }`}
                   >
                     {label}
@@ -529,10 +758,13 @@ export default function App() {
                   <div className="flex-1 space-y-3 overflow-y-auto p-5">
                     {chat.length === 0 ? (
                       <p className="text-sm text-mute">
-                        Ask {character?.name ?? "the character"} anything. At this checkpoint they cannot
+                        Ask{" "}
+                        {character?.name ?? "the character"}{" "}
+                        anything. At this checkpoint they cannot
                         acknowledge later events.
                       </p>
                     ) : null}
+
                     {chat.map((item, index) => (
                       <div
                         key={`${item.role}-${index}`}
@@ -542,33 +774,59 @@ export default function App() {
                           }`}
                       >
                         <p className="mb-1 text-[10px] tracking-widest text-brass uppercase">
-                          {item.role === "user" ? "You" : character?.name}
-                          {item.refused ? " · refuses future knowledge" : ""}
+                          {item.role === "user"
+                            ? "You"
+                            : character?.name}
+
+                          {item.refused
+                            ? " · refuses future knowledge"
+                            : ""}
                         </p>
+
                         {item.content}
                       </div>
                     ))}
-                    {busy ? <p className="text-xs text-mute">Weaving a reply…</p> : null}
+
+                    {busy ? (
+                      <p className="text-xs text-mute">
+                        Weaving a reply…
+                      </p>
+                    ) : null}
+
                     <div ref={chatEndRef} />
                   </div>
-                  <form onSubmit={sendInterview} className="border-t border-line p-4">
+
+                  <form
+                    onSubmit={sendInterview}
+                    className="border-t border-line p-4"
+                  >
                     <div className="flex gap-2">
                       <textarea
                         value={draft}
-                        onChange={(event) => setDraft(event.target.value)}
+                        onChange={(event) =>
+                          setDraft(event.target.value)
+                        }
                         onKeyDown={(event) => {
-                          if (event.key === "Enter" && !event.shiftKey) {
+                          if (
+                            event.key === "Enter" &&
+                            !event.shiftKey
+                          ) {
                             event.preventDefault();
                             void sendInterview();
                           }
                         }}
                         rows={2}
-                        placeholder={`Speak to ${character?.name ?? "the character"}…`}
+                        placeholder={`Speak to ${character?.name ??
+                          "the character"
+                          }…`}
                         className="flex-1 resize-none rounded-2xl border border-line bg-ink px-3 py-2 text-sm outline-none focus:border-brass"
                       />
+
                       <button
                         type="submit"
-                        disabled={busy || !draft.trim()}
+                        disabled={
+                          busy || !draft.trim()
+                        }
                         className="self-end rounded-2xl bg-brass px-4 py-2 text-sm font-medium text-ink disabled:opacity-40"
                       >
                         Send
@@ -577,69 +835,136 @@ export default function App() {
                   </form>
                 </div>
               ) : tab === "spinoff" ? (
-                <div className="flex flex-1 flex-col p-5 overflow-y-auto">
+                <div className="flex flex-1 flex-col overflow-y-auto p-5">
                   {/* Controls */}
                   <div className="mb-5 space-y-4">
                     {/* Spinoff type */}
                     <div>
-                      <label className="text-xs tracking-[0.2em] text-mute uppercase">Type</label>
+                      <label className="text-xs tracking-[0.2em] text-mute uppercase">
+                        Type
+                      </label>
+
                       <div className="mt-2 flex gap-2">
                         {(
                           [
-                            ["parallel", "Parallel", "Events alongside the main plot"],
-                            ["prequel", "Prequel", "Before the story begins"],
-                            ["aftermath", "Aftermath", "After the final event"],
+                            [
+                              "parallel",
+                              "Parallel",
+                              "Events alongside the main plot",
+                            ],
+                            [
+                              "prequel",
+                              "Prequel",
+                              "Before the story begins",
+                            ],
+                            [
+                              "aftermath",
+                              "Aftermath",
+                              "After the final event",
+                            ],
                           ] as const
-                        ).map(([value, label, desc]) => (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() => setSpinoffType(value)}
-                            className={`flex-1 rounded-2xl border px-3 py-2 text-left text-sm transition-colors ${spinoffType === value
-                                ? "border-brass bg-brass/15 text-mist"
-                                : "border-line text-mute hover:border-brass/50"
-                              }`}
-                          >
-                            <span className="font-medium">{label}</span>
-                            <span className="mt-0.5 block text-[11px] text-mute">{desc}</span>
-                          </button>
-                        ))}
+                        ).map(
+                          ([
+                            value,
+                            label,
+                            desc,
+                          ]) => (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() =>
+                                setSpinoffType(
+                                  value,
+                                )
+                              }
+                              className={`flex-1 rounded-2xl border px-3 py-2 text-left text-sm transition-colors ${spinoffType ===
+                                  value
+                                  ? "border-brass bg-brass/15 text-mist"
+                                  : "border-line text-mute hover:border-brass/50"
+                                }`}
+                            >
+                              <span className="font-medium">
+                                {label}
+                              </span>
+
+                              <span className="mt-0.5 block text-[11px] text-mute">
+                                {desc}
+                              </span>
+                            </button>
+                          ),
+                        )}
                       </div>
                     </div>
 
                     {/* Length */}
                     <div>
-                      <label className="text-xs tracking-[0.2em] text-mute uppercase">Length</label>
+                      <label className="text-xs tracking-[0.2em] text-mute uppercase">
+                        Length
+                      </label>
+
                       <div className="mt-2 flex gap-2">
                         {(
                           [
-                            ["short", "Short", "~500 words"],
-                            ["medium", "Medium", "~1000 words"],
-                            ["long", "Long", "~2000 words"],
+                            [
+                              "short",
+                              "Short",
+                              "~500 words",
+                            ],
+                            [
+                              "medium",
+                              "Medium",
+                              "~1000 words",
+                            ],
+                            [
+                              "long",
+                              "Long",
+                              "~2000 words",
+                            ],
                           ] as const
-                        ).map(([value, label, hint]) => (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() => setSpinoffLength(value)}
-                            className={`rounded-full border px-4 py-2 text-sm transition-colors ${spinoffLength === value
-                                ? "border-brass bg-brass/15 text-mist"
-                                : "border-line text-mute hover:border-brass/50"
-                              }`}
-                          >
-                            {label} <span className="text-[11px] text-mute">({hint})</span>
-                          </button>
-                        ))}
+                        ).map(
+                          ([
+                            value,
+                            label,
+                            hint,
+                          ]) => (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() =>
+                                setSpinoffLength(
+                                  value,
+                                )
+                              }
+                              className={`rounded-full border px-4 py-2 text-sm transition-colors ${spinoffLength ===
+                                  value
+                                  ? "border-brass bg-brass/15 text-mist"
+                                  : "border-line text-mute hover:border-brass/50"
+                                }`}
+                            >
+                              {label}{" "}
+                              <span className="text-[11px] text-mute">
+                                ({hint})
+                              </span>
+                            </button>
+                          ),
+                        )}
                       </div>
                     </div>
 
                     {/* Tone */}
                     <div>
-                      <label className="text-xs tracking-[0.2em] text-mute uppercase">Tone</label>
+                      <label className="text-xs tracking-[0.2em] text-mute uppercase">
+                        Tone
+                      </label>
+
                       <input
                         type="text"
                         value={spinoffTone}
-                        onChange={(e) => setSpinoffTone(e.target.value)}
+                        onChange={(e) =>
+                          setSpinoffTone(
+                            e.target.value,
+                          )
+                        }
                         placeholder="Match the source"
                         className="mt-2 w-full rounded-2xl border border-line bg-ink px-3 py-2 text-sm outline-none focus:border-brass"
                       />
@@ -647,10 +972,17 @@ export default function App() {
 
                     {/* Focus prompt */}
                     <div>
-                      <label className="text-xs tracking-[0.2em] text-mute uppercase">Your idea (optional)</label>
+                      <label className="text-xs tracking-[0.2em] text-mute uppercase">
+                        Your idea (optional)
+                      </label>
+
                       <textarea
                         value={spinoffFocus}
-                        onChange={(e) => setSpinoffFocus(e.target.value)}
+                        onChange={(e) =>
+                          setSpinoffFocus(
+                            e.target.value,
+                          )
+                        }
                         rows={2}
                         placeholder="Describe what the spin-off should explore…"
                         className="mt-2 w-full resize-none rounded-2xl border border-line bg-ink px-3 py-2 text-sm outline-none focus:border-brass"
@@ -663,15 +995,20 @@ export default function App() {
                       disabled={busy}
                       className="w-fit rounded-full bg-brass px-5 py-2 text-sm font-medium text-ink disabled:opacity-40"
                     >
-                      {busy ? "Generating…" : "Generate spin-off"}
+                      {busy
+                        ? "Generating…"
+                        : "Generate spin-off"}
                     </button>
                   </div>
 
                   {/* Output */}
                   {spinoffResult ? (
                     <article className="space-y-5 border-t border-line pt-5">
-                      <h2 className="font-display text-2xl text-brass">{spinoffResult.title}</h2>
-                      <div className="max-w-prose text-sm leading-relaxed text-mist/95 whitespace-pre-line">
+                      <h2 className="font-display text-2xl text-brass">
+                        {spinoffResult.title}
+                      </h2>
+
+                      <div className="max-w-prose whitespace-pre-line text-sm leading-relaxed text-mist/95">
                         {spinoffResult.story}
                       </div>
 
@@ -680,22 +1017,48 @@ export default function App() {
                         <button
                           type="button"
                           className="flex w-full items-center justify-between px-4 py-3 text-left"
-                          onClick={() => setAnchorsOpen((o) => !o)}
+                          onClick={() =>
+                            setAnchorsOpen(
+                              (o) => !o,
+                            )
+                          }
                         >
                           <span className="text-xs tracking-[0.18em] text-mute uppercase">
-                            Canon anchors ({spinoffResult.canon_anchors.length})
+                            Canon anchors (
+                            {
+                              spinoffResult
+                                .canon_anchors
+                                .length
+                            }
+                            )
                           </span>
-                          <span className="text-brass">{anchorsOpen ? "–" : "+"}</span>
+
+                          <span className="text-brass">
+                            {anchorsOpen ? "–" : "+"}
+                          </span>
                         </button>
+
                         {anchorsOpen ? (
                           <ul className="space-y-2 border-t border-line px-4 py-3">
-                            {spinoffResult.canon_anchors.map((a, i) => (
-                              <li key={`${a.event_id}-${i}`} className="rounded-xl bg-panel-2 p-2 text-xs leading-relaxed">
-                                <span className="font-mono text-brass">{a.event_id}</span>{" "}
-                                <span className="text-mist">{a.event_title}</span>
-                                <span className="block mt-0.5 text-mute">{a.how_used}</span>
-                              </li>
-                            ))}
+                            {spinoffResult.canon_anchors.map(
+                              (a, i) => (
+                                <li
+                                  key={`${a.event_id}-${i}`}
+                                  className="rounded-xl bg-panel-2 p-2 text-xs leading-relaxed"
+                                >
+                                  <span className="font-mono text-brass">
+                                    {a.event_id}
+                                  </span>{" "}
+                                  <span className="text-mist">
+                                    {a.event_title}
+                                  </span>
+
+                                  <span className="mt-0.5 block text-mute">
+                                    {a.how_used}
+                                  </span>
+                                </li>
+                              ),
+                            )}
                           </ul>
                         ) : null}
                       </div>
@@ -705,33 +1068,67 @@ export default function App() {
                         <button
                           type="button"
                           className="flex w-full items-center justify-between px-4 py-3 text-left"
-                          onClick={() => setInventedOpen((o) => !o)}
+                          onClick={() =>
+                            setInventedOpen(
+                              (o) => !o,
+                            )
+                          }
                         >
                           <span className="text-xs tracking-[0.18em] text-mute uppercase">
-                            New in this spin-off ({spinoffResult.invented_elements.length})
+                            New in this spin-off (
+                            {
+                              spinoffResult
+                                .invented_elements
+                                .length
+                            }
+                            )
                           </span>
-                          <span className="text-brass">{inventedOpen ? "–" : "+"}</span>
+
+                          <span className="text-brass">
+                            {inventedOpen ? "–" : "+"}
+                          </span>
                         </button>
+
                         {inventedOpen ? (
                           <ul className="space-y-1 border-t border-line px-4 py-3 text-xs text-mute">
-                            {spinoffResult.invented_elements.map((item) => (
-                              <li key={item}>· {item}</li>
-                            ))}
+                            {spinoffResult.invented_elements.map(
+                              (item) => (
+                                <li key={item}>
+                                  · {item}
+                                </li>
+                              ),
+                            )}
                           </ul>
                         ) : null}
                       </div>
 
                       {/* Audit badge and trace */}
                       <div className="flex flex-wrap items-center gap-3">
-                        <span className={`rounded-full px-3 py-1 text-xs font-medium ${spinoffResult.audit.toLowerCase().includes("passes") || spinoffResult.audit.toLowerCase().includes("holds")
-                            ? "bg-green-900/40 text-green-300"
-                            : "bg-yellow-900/40 text-yellow-300"
-                          }`}>
-                          {spinoffResult.audit.toLowerCase().includes("passes") || spinoffResult.audit.toLowerCase().includes("holds")
-                            ? "✓ Audit passed" : "⚠ Accepted with warnings"}
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-medium ${spinoffResult.audit
+                              .toLowerCase()
+                              .includes("passes") ||
+                              spinoffResult.audit
+                                .toLowerCase()
+                                .includes("holds")
+                              ? "bg-green-900/40 text-green-300"
+                              : "bg-yellow-900/40 text-yellow-300"
+                            }`}
+                        >
+                          {spinoffResult.audit
+                            .toLowerCase()
+                            .includes("passes") ||
+                            spinoffResult.audit
+                              .toLowerCase()
+                              .includes("holds")
+                            ? "✓ Audit passed"
+                            : "⚠ Accepted with warnings"}
                         </span>
+
                         <span className="text-[11px] text-mute">
-                          {spinoffResult.trace.join(" → ")}
+                          {spinoffResult.trace.join(
+                            " → ",
+                          )}
                         </span>
                       </div>
 
@@ -744,6 +1141,7 @@ export default function App() {
                         >
                           Copy
                         </button>
+
                         <button
                           type="button"
                           onClick={downloadSpinoff}
@@ -754,14 +1152,20 @@ export default function App() {
                       </div>
                     </article>
                   ) : (
-                    <p className="text-sm text-mute">No spin-off generated yet. Choose a type and click Generate.</p>
+                    <p className="text-sm text-mute">
+                      No spin-off generated yet. Choose a type
+                      and click Generate.
+                    </p>
                   )}
                 </div>
               ) : (
                 <div className="flex flex-1 flex-col p-5">
                   <p className="mb-4 text-sm text-mute">
-                    Rewrite {checkpoint?.id} strictly through {character?.name}&apos;s senses and private thoughts.
+                    Rewrite {checkpoint?.id} strictly through{" "}
+                    {character?.name}&apos;s senses and private
+                    thoughts.
                   </p>
+
                   <button
                     type="button"
                     onClick={() => void runPerspective()}
@@ -770,24 +1174,38 @@ export default function App() {
                   >
                     Shift perspective
                   </button>
+
                   {scene ? (
                     <article className="space-y-4">
-                      <p className="font-display text-xl leading-relaxed text-mist">{scene.prose}</p>
+                      <p className="font-display text-xl leading-relaxed text-mist">
+                        {scene.prose}
+                      </p>
+
                       {scene.interior ? (
-                        <p className="border-l-2 border-brass/50 pl-4 text-sm text-mute italic">{scene.interior}</p>
+                        <p className="border-l-2 border-brass/50 pl-4 text-sm text-mute italic">
+                          {scene.interior}
+                        </p>
                       ) : null}
+
                       {scene.sensory_focus.length ? (
                         <div className="flex flex-wrap gap-2">
-                          {scene.sensory_focus.map((item) => (
-                            <span key={item} className="rounded-full border border-line px-3 py-1 text-xs text-sea">
-                              {item}
-                            </span>
-                          ))}
+                          {scene.sensory_focus.map(
+                            (item) => (
+                              <span
+                                key={item}
+                                className="rounded-full border border-line px-3 py-1 text-xs text-sea"
+                              >
+                                {item}
+                              </span>
+                            ),
+                          )}
                         </div>
                       ) : null}
                     </article>
                   ) : (
-                    <p className="text-sm text-mute">No scene generated yet.</p>
+                    <p className="text-sm text-mute">
+                      No scene generated yet.
+                    </p>
                   )}
                 </div>
               )}
@@ -811,11 +1229,18 @@ function EmptyState({
   return (
     <div className="flex flex-1 flex-col items-center justify-center rounded-3xl border border-dashed border-line bg-panel/60 px-6 py-20 text-center">
       <div className="thread mb-6 h-px w-48" />
-      <h2 className="font-display text-3xl text-brass">Thread a story into the engine</h2>
+
+      <h2 className="font-display text-3xl text-brass">
+        Thread a story into the engine
+      </h2>
+
       <p className="mt-3 max-w-lg text-sm text-mute">
-        Load the drowned-coast sample, or upload a .txt file. Loom will extract characters, checkpoints, and
-        time-bounded knowledge, then let you interview anyone from inside a single hour.
+        Load the drowned-coast sample, or upload a .txt file.
+        Loom will extract characters, checkpoints, and
+        time-bounded knowledge, then let you interview anyone
+        from inside a single hour.
       </p>
+
       <div className="mt-6 flex flex-wrap justify-center gap-3">
         <button
           type="button"
@@ -823,8 +1248,11 @@ function EmptyState({
           disabled={busy}
           className="rounded-full bg-brass px-5 py-2 text-sm font-medium text-ink disabled:opacity-40"
         >
-          {busy ? "Loading…" : "Load sample story"}
+          {busy
+            ? "Loading…"
+            : "Load sample story"}
         </button>
+
         <button
           type="button"
           onClick={onUpload}
